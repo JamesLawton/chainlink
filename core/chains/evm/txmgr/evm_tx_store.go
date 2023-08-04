@@ -906,6 +906,12 @@ func (o *evmTxStore) FindReceiptsPendingConfirmation(ctx context.Context, blockN
 	return
 }
 
+func (o *evmTxStore) FindHighestSequence(fromAddress common.Address, chainId *big.Int) (nonce evmtypes.Nonce, err error) {
+	sql := `SELECT MAX(nonce) FROM eth_txes WHERE from_address = $1 and evm_chain_id = $2`
+	err = o.q.Get(&nonce, sql, fromAddress.String(), chainId.String())
+	return
+}
+
 // FindTxWithSequence returns any broadcast ethtx with the given nonce
 func (o *evmTxStore) FindTxWithSequence(fromAddress common.Address, nonce evmtypes.Nonce) (etx *Tx, err error) {
 	etx = new(Tx)
@@ -1293,9 +1299,8 @@ func (o *evmTxStore) UpdateTxFatalError(etx *Tx, qopts ...pg.QOpt) error {
 }
 
 // Updates eth attempt from in_progress to broadcast. Also updates the eth tx to unconfirmed.
-// Before it updates both tables though it increments the next nonce from the keystore
 // One of the more complicated signatures. We have to accept variable pg.QOpt and QueryerFunc arguments
-func (o *evmTxStore) UpdateTxAttemptInProgressToBroadcast(etx *Tx, attempt TxAttempt, NewAttemptState txmgrtypes.TxAttemptState, incrNextNonceCallback txmgrtypes.QueryerFunc, qopts ...pg.QOpt) error {
+func (o *evmTxStore) UpdateTxAttemptInProgressToBroadcast(etx *Tx, attempt TxAttempt, NewAttemptState txmgrtypes.TxAttemptState, incrementSeqFunc func(address common.Address) error, qopts ...pg.QOpt) error {
 	qq := o.q.WithOpts(qopts...)
 
 	if etx.BroadcastAt == nil {
@@ -1316,9 +1321,6 @@ func (o *evmTxStore) UpdateTxAttemptInProgressToBroadcast(etx *Tx, attempt TxAtt
 	etx.State = txmgr.TxUnconfirmed
 	attempt.State = NewAttemptState
 	return qq.Transaction(func(tx pg.Queryer) error {
-		if err := incrNextNonceCallback(tx); err != nil {
-			return pkgerrors.Wrap(err, "SaveEthTxAttempt failed on incrNextNonceCallback")
-		}
 		dbEtx := DbEthTxFromEthTx(etx)
 		if err := tx.Get(&dbEtx, `UPDATE eth_txes SET state=$1, error=$2, broadcast_at=$3, initial_broadcast_at=$4 WHERE id = $5 RETURNING *`, dbEtx.State, dbEtx.Error, dbEtx.BroadcastAt, dbEtx.InitialBroadcastAt, dbEtx.ID); err != nil {
 			return pkgerrors.Wrap(err, "SaveEthTxAttempt failed to save eth_tx")
@@ -1327,6 +1329,9 @@ func (o *evmTxStore) UpdateTxAttemptInProgressToBroadcast(etx *Tx, attempt TxAtt
 		dbAttempt := DbEthTxAttemptFromEthTxAttempt(&attempt)
 		if err := tx.Get(&dbAttempt, `UPDATE eth_tx_attempts SET state = $1 WHERE id = $2 RETURNING *`, dbAttempt.State, dbAttempt.ID); err != nil {
 			return pkgerrors.Wrap(err, "SaveEthTxAttempt failed to save eth_tx_attempt")
+		}
+		if err := incrementSeqFunc(etx.FromAddress); err != nil {
+			return pkgerrors.Wrap(err, "IncrementNextSequence failed to increment the next sequence in the broadcaster")
 		}
 		return nil
 	})
@@ -1427,26 +1432,6 @@ func (o *evmTxStore) HasInProgressTransaction(account common.Address, chainID *b
 	qq := o.q.WithOpts(qopts...)
 	err = qq.Get(&exists, `SELECT EXISTS(SELECT 1 FROM eth_txes WHERE state = 'in_progress' AND from_address = $1 AND evm_chain_id = $2)`, account, chainID.String())
 	return exists, pkgerrors.Wrap(err, "hasInProgressTransaction failed")
-}
-
-func (o *evmTxStore) UpdateKeyNextSequence(newNextNonce, currentNextNonce evmtypes.Nonce, address common.Address, chainID *big.Int, qopts ...pg.QOpt) error {
-	qq := o.q.WithOpts(qopts...)
-	return qq.Transaction(func(tx pg.Queryer) error {
-		//  We filter by next_nonce here as an optimistic lock to make sure it
-		//  didn't get changed out from under us. Shouldn't happen but can't hurt.
-		res, err := tx.Exec(`UPDATE evm_key_states SET next_nonce = $1, updated_at = $2 WHERE address = $3 AND next_nonce = $4 AND evm_chain_id = $5`, newNextNonce.Int64(), time.Now(), address, currentNextNonce.Int64(), chainID.String())
-		if err != nil {
-			return pkgerrors.Wrap(err, "NonceSyncer#fastForwardNonceIfNecessary failed to update keys.next_nonce")
-		}
-		rowsAffected, err := res.RowsAffected()
-		if err != nil {
-			return pkgerrors.Wrap(err, "NonceSyncer#fastForwardNonceIfNecessary failed to get RowsAffected")
-		}
-		if rowsAffected == 0 {
-			return ErrKeyNotUpdated
-		}
-		return nil
-	})
 }
 
 func (o *evmTxStore) countTransactionsWithState(fromAddress common.Address, state txmgrtypes.TxState, chainID *big.Int, qopts ...pg.QOpt) (count uint32, err error) {

@@ -204,7 +204,7 @@ func (ks *master) Migrate(vrfPssword string, f DefaultEVMChainIDFunc) error {
 	if err = ks.keyManager.save(); err != nil {
 		return err
 	}
-	ethKeys, nonces, fundings, err := ks.eth.getV1KeysAsV2()
+	ethKeys, fundings, err := ks.eth.getV1KeysAsV2()
 	if err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ WARNING: This will PERMANENTLY AND IRRECOVERABLY delete any legacy eth keys, so 
 			}
 			ks.logger.Debugf("Migrating Eth key %s (and pegging to chain ID %s)", ethKey.ID(), chainID.String())
 			// Note that V1 keys that were "funding" will be migrated as "disabled"
-			if err = ks.eth.addWithNonce(ethKey, chainID, nonces[i], fundings[i]); err != nil {
+			if err = ks.eth.addKeyState(ethKey, chainID, fundings[i]); err != nil {
 				return err
 			}
 			if err = ks.keyManager.save(); err != nil {

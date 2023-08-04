@@ -7,6 +7,7 @@ import "fmt"
 type Sequence interface {
 	fmt.Stringer
 	Int64() int64 // needed for numeric sequence confirmation - to be removed with confirmation logic generalization: https://smartcontract-it.atlassian.net/browse/BCI-860
+	Increment() Sequence // needed to produce the next usable sequence for a transaction
 }
 
 // ID represents the base type, for any chain's ID.

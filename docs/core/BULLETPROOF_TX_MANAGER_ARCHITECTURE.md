@@ -57,12 +57,6 @@ EC - EthConfirmer
 
 An attempt may have 0 or more `eth_receipts` indicating that the transaction has been mined into a block. This block may or may not exist as part of the canonical longest chain.
 
-`keys` has a field:
-
-- `next_nonce`
-
-Which tracks the nonce that is available to use for the next transaction. It is only updated after a successful broadcast has occurred.
-
 # Components
 
 BulletproofTxManager is split into three components, each of which has a clearly delineated set of responsibilities.
@@ -87,7 +81,7 @@ EthTx should wait until it's transaction confirms before marking the task as com
 
 ## EthBroadcaster
 
-Conceptually, **EthBroadcaster** assigns a nonce to a transaction and ensures that it is valid. It alone controls the `keys.next_nonce` field.
+Conceptually, **EthBroadcaster** assigns a nonce to a transaction and ensures that it is valid. It alone maintains the next usable sequence for a transaction.
 
 **EthBroadcaster** monitors `eth_txes` for transactions that need to be broadcast, assigns nonces and ensures that at least one eth node somewhere has placed the transaction into its mempool.
 
