@@ -440,6 +440,18 @@ var (
 		GasEstimationBuffer:       0,
 	}
 
+	LineaTestnet blockchain.EVMNetwork = blockchain.EVMNetwork{
+		Name:                      "Linea Testnet",
+		SupportsEIP1559:           true,
+		ClientImplementation:      blockchain.EthereumClientImplementation,
+		ChainID:                   59144,
+		Simulated:                 false,
+		ChainlinkTransactionLimit: 5000,
+		Timeout:                   blockchain.JSONStrDuration{Duration: time.Minute},
+		MinimumConfirmations:      1,
+		GasEstimationBuffer:       1000,
+	}
+
 	MappedNetworks = map[string]blockchain.EVMNetwork{
 		"SIMULATED":        SimulatedEVM,
 		"SIMULATED_1":      SimulatedEVMNonDev1,
@@ -471,6 +483,7 @@ var (
 		"BASE_MAINNET":      BaseMainnet,
 		"BSC_TESTNET":       BSCTestnet,
 		"BSC_MAINNET":       BSCMainnet,
+		"LINEA_TESTNET":     LineaTestnet,
 	}
 )
 
