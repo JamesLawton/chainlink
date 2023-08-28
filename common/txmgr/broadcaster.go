@@ -144,7 +144,7 @@ type Broadcaster[
 
 	parseAddr func(string) (ADDR, error)
 
-	sequenceLock *sync.RWMutex
+	sequenceLock    *sync.RWMutex
 	nextSequenceMap map[ADDR]SEQ
 }
 
@@ -189,7 +189,7 @@ func NewBroadcaster[
 		checkerFactory:   checkerFactory,
 		autoSyncSequence: autoSyncSequence,
 		parseAddr:        parseAddress,
-		sequenceLock:	  &sync.RWMutex{},
+		sequenceLock:     &sync.RWMutex{},
 	}
 
 	b.processUnstartedTxsImpl = b.processUnstartedTxs
@@ -238,7 +238,7 @@ func (eb *Broadcaster[CHAIN_ID, HEAD, ADDR, TX_HASH, BLOCK_HASH, SEQ, FEE]) star
 
 	eb.wg.Add(1)
 	go eb.txInsertTriggerer()
-	
+
 	eb.nextSequenceMap, err = eb.loadNextSequenceMap(eb.enabledAddresses)
 	if err != nil {
 		return err
@@ -325,7 +325,7 @@ func (eb *Broadcaster[CHAIN_ID, HEAD, ADDR, TX_HASH, BLOCK_HASH, SEQ, FEE]) txIn
 func (eb *Broadcaster[CHAIN_ID, HEAD, ADDR, TX_HASH, BLOCK_HASH, SEQ, FEE]) loadNextSequenceMap(addresses []ADDR) (map[ADDR]SEQ, error) {
 	eb.sequenceLock.Lock()
 	defer eb.sequenceLock.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 30 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	nextSequenceMap := make(map[ADDR]SEQ)
@@ -346,7 +346,7 @@ func (eb *Broadcaster[CHAIN_ID, HEAD, ADDR, TX_HASH, BLOCK_HASH, SEQ, FEE]) load
 			nextSequenceMap[address] = seq.Increment().(SEQ)
 		}
 	}
-	
+
 	return nextSequenceMap, nil
 }
 
@@ -839,7 +839,7 @@ func (eb *Broadcaster[CHAIN_ID, HEAD, ADDR, TX_HASH, BLOCK_HASH, SEQ, FEE]) SetN
 	}
 	eb.nextSequenceMap[address] = seq
 	return nil
-} 
+}
 
 func observeTimeUntilBroadcast[CHAIN_ID types.ID](chainID CHAIN_ID, createdAt, broadcastAt time.Time) {
 	duration := float64(broadcastAt.Sub(createdAt))

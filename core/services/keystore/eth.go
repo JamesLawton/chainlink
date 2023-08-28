@@ -480,7 +480,7 @@ func (ks *eth) EnabledAddressesForChain(chainID *big.Int) (addresses []common.Ad
 	return
 }
 
-func (ks *eth) getV1KeysAsV2() (keys []ethkey.KeyV2,fundings []bool, _ error) {
+func (ks *eth) getV1KeysAsV2() (keys []ethkey.KeyV2, fundings []bool, _ error) {
 	v1Keys, err := ks.orm.GetEncryptedV1EthKeys()
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to get encrypted v1 eth keys")

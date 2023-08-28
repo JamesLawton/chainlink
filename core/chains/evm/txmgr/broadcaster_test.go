@@ -1186,7 +1186,7 @@ func TestEthBroadcaster_ProcessUnstartedEthTxs_Errors(t *testing.T) {
 		require.Equal(t, int64(localNextNonce), int64(nonce))
 
 		// On the second try, the tx has been accepted into the mempool
-		ethClient.On("PendingNonceAt", mock.Anything, fromAddress).Return(uint64(localNextNonce + 1), nil).Once()
+		ethClient.On("PendingNonceAt", mock.Anything, fromAddress).Return(uint64(localNextNonce+1), nil).Once()
 
 		{
 			retryable, err := eb.ProcessUnstartedTxs(testutils.Context(t), fromAddress)
@@ -1720,7 +1720,6 @@ func TestEthBroadcaster_IncrementNextNonce(t *testing.T) {
 	evmcfg := evmtest.NewChainScopedConfig(t, cfg)
 	ethClient := evmtest.NewEthClientMockWithDefaultChain(t)
 
-	
 	addresses := []gethCommon.Address{fromAddress}
 	kst.On("EnabledAddressesForChain", &cltest.FixtureChainID).Return(addresses, nil).Once()
 	ethClient.On("PendingNonceAt", mock.Anything, fromAddress).Return(uint64(0), nil).Once()
@@ -1991,7 +1990,7 @@ func Test_SetNextNonce(t *testing.T) {
 	})
 
 	t.Run("address not found", func(t *testing.T) {
-		address :=utils.RandomAddress()
+		address := utils.RandomAddress()
 		err := eb.SetNextSequence(address, evmtypes.Nonce(100))
 		require.Error(t, err)
 	})

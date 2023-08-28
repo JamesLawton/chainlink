@@ -10,10 +10,10 @@ type State struct {
 	ID         int32
 	Address    EIP55Address
 	EVMChainID utils.Big
-	Disabled  bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	lastUsed  time.Time
+	Disabled   bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	lastUsed   time.Time
 }
 
 func (s State) KeyID() string {
