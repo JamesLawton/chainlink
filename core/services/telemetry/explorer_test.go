@@ -18,7 +18,7 @@ func TestExplorerAgent(t *testing.T) {
 
 	// Handle the Send call and store the logs
 	var sentLog []byte
-	explorerClient.On("Send", mock.AnythingOfType("*context.emptyCtx"), mock.AnythingOfType("[]uint8"), synchronization.ExplorerBinaryMessage).Return().Run(func(args mock.Arguments) {
+	explorerClient.On("Send", mock.Anything, mock.AnythingOfType("[]uint8"), synchronization.ExplorerBinaryMessage).Return().Run(func(args mock.Arguments) {
 		sentLog = args[1].([]byte)
 	})
 
