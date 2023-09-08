@@ -34,7 +34,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.54.2 && \
-          gh pr diff 10555 > pr.diff && ./bin/golangci-lint run --out-format colored-line-number --new-from-patch=pr.diff
+          gh pr diff 10555 > pr.diff && env -i HOME="$HOME" PATH="$PATH" ./bin/golangci-lint run --out-format colored-line-number --new-from-patch=pr.diff
 
   golangci:
     name: lint
@@ -60,4 +60,4 @@ jobs:
       - name: test linter manually
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr diff 10555 > pr.diff && golangci-lint run --out-format colored-line-number --new-from-patch=pr.diff
+        run: gh pr diff 10555 > pr.diff && env -i HOME="$HOME" PATH="$PATH" golangci-lint run --out-format colored-line-number --new-from-patch=pr.diff
