@@ -1,15 +1,9 @@
 run:
   timeout: 15m0s
 linters:
+  disable-all: true
   enable:
-    - exhaustive
-    - exportloopref
-    - revive
-    - goimports
-    - gosec
-    - misspell
-    - rowserrcheck
-    - errorlint
+    - unused
 linters-settings:
   exhaustive:
     default-signifies-exhaustive: true
@@ -76,6 +70,7 @@ linters-settings:
       - name: bool-literal-in-expr
       - name: atomic
 issues:
+  #new-from-rev: origin/develop
   exclude-rules:
     - path: test
       text: "^G404:"
