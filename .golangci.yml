@@ -2,3 +2,6 @@ linters:
   disable-all: true
   enable:
     - unused
+run:
+  timeout: "15m"
+  tests: true
