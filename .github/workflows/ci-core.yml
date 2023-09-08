@@ -56,8 +56,83 @@ jobs:
         run: |
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.54.2 && \
           env -i HOME="$HOME" PATH="$PATH" ./bin/golangci-lint run -v --out-format colored-line-number --new-from-patch=pr.diff
+  golangci-deps-1:
+    runs-on: ubuntu20.04-16cores-64GB
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+      - name: Touching core/web/assets/index.html
+        run: mkdir -p core/web/assets && touch core/web/assets/index.html
+      - name: Build binary
+        run: go build ./...
+      - name: golangci-lint
+        continue-on-error: true
+        uses: golangci/golangci-lint-action@3a919529898de77ec3da873e3063ca4b10e7f5cc # v3.7.0
+        with:
+          version: v1.54.2
+          only-new-issues: ${{ github.event.schedule == '' }} # show only new issues, unless it's a scheduled run
+          args: --out-format colored-line-number
 
-  golangci-deps:
+  golangci-deps-2:
+    runs-on: ubuntu20.04-16cores-64GB
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v3
+      - name: Setup NodeJS
+        uses: ./.github/actions/setup-nodejs
+        with:
+          prod: "true"
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+      - name: Setup Solana
+        uses: ./.github/actions/setup-solana
+      - name: Setup Postgres
+        uses: ./.github/actions/setup-postgres
+      - name: Touching core/web/assets/index.html
+        run: mkdir -p core/web/assets && touch core/web/assets/index.html
+      - name: Download Go vendor packages
+        run: go mod download
+      - name: Build binary
+        run: go build ./...
+      - name: test linter manually
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.54.2 && \
+          env -i HOME="$HOME" PATH="$PATH" ./bin/golangci-lint run -v --out-format colored-line-number --new-from-patch=pr.diff
+
+  golangci-deps-3:
+    runs-on: ubuntu20.04-16cores-64GB
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v3
+      - name: Setup NodeJS
+        uses: ./.github/actions/setup-nodejs
+        with:
+          prod: "true"
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+      - name: Setup Solana
+        uses: ./.github/actions/setup-solana
+      - name: Setup wasmd
+        uses: ./.github/actions/setup-wasmd
+      - name: Download Go vendor packages
+        run: go mod download
+      - name: Build binary
+        run: go build ./...
+      - name: test linter manually
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.54.2 && \
+          env -i HOME="$HOME" PATH="$PATH" ./bin/golangci-lint run -v --out-format colored-line-number --new-from-patch=pr.diff
+
+  golangci-deps-4:
     runs-on: ubuntu20.04-16cores-64GB
     steps:
       - uses: actions/checkout@v4
@@ -77,10 +152,6 @@ jobs:
         uses: ./.github/actions/setup-postgres
       - name: Touching core/web/assets/index.html
         run: mkdir -p core/web/assets && touch core/web/assets/index.html
-      - name: Download Go vendor packages
-        run: go mod download
-      - name: Build binary
-        run: go build ./...
       - name: test linter manually
         shell: bash
         env:
