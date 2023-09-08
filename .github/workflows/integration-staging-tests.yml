@@ -50,7 +50,7 @@ jobs:
       WASP_LOG_LEVEL: info
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@3df4ab11eba7bda6032a0b82a6bb43b11571feac
         with:
           fetch-depth: 0
       - name: Run E2E soak tests
