@@ -1,0 +1,3517 @@
+diff --git a/.github/workflows/automation-benchmark-tests.yml b/.github/workflows/automation-benchmark-tests.yml
+deleted file mode 100644
+index 37330d059ab..00000000000
+--- a/.github/workflows/automation-benchmark-tests.yml
++++ /dev/null
+@@ -1,137 +0,0 @@
+-name: Automation Benchmark Test
+-on:
+-  workflow_dispatch:
+-    inputs:
+-      chainlinkVersion:
+-        description: Chainlink image version to use
+-        required: true
+-        type: string
+-        default: 2.0.0
+-      chainlinkImage:
+-        description: Chainlink image repo to use
+-        required: true
+-        type: string
+-        default: public.ecr.aws/chainlink/chainlink
+-      network:
+-        description: Network to run tests on
+-        required: true
+-        type: choice
+-        options:
+-          - SIMULATED
+-          - SIMULATED_NONDEV
+-          - GOERLI
+-          - ARBITRUM_GOERLI
+-          - OPTIMISM_GOERLI
+-          - MUMBAI
+-          - SEPOLIA
+-      TestInputs:
+-        description: TestInputs
+-        required: false
+-        type: string
+-      wsURL:
+-        description: WS URL for the network (Skip for Simulated)
+-        required: false
+-        type: string
+-      httpURL:
+-        description: HTTP URL for the network (Skip for Simulated)
+-        required: false
+-        type: string
+-      slackMemberID:
+-        description: Notifies test results (Not your @)
+-        required: true
+-        default: U02Q14G80TY
+-        type: string
+-      fundingPrivateKey:
+-        description: Private funding key (Skip for Simulated)
+-        required: false
+-        type: string
+-
+-jobs:
+-  automation_benchmark:
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    name: ${{ inputs.network }} Automation Benchmark Test
+-    runs-on: ubuntu-latest
+-    env:
+-      SELECTED_NETWORKS: ${{ inputs.network }}
+-      SLACK_API_KEY: ${{ secrets.QA_SLACK_API_KEY }}
+-      SLACK_CHANNEL: C03KJ5S7KEK
+-      TEST_INPUTS: ${{ inputs.TestInputs }}
+-      CHAINLINK_ENV_USER: ${{ github.actor }}
+-      REF_NAME: ${{ github.head_ref || github.ref_name }}
+-    steps:
+-      - name: Setup Push Tag
+-        shell: bash
+-        run: |
+-          echo "### chainlink image used for this test run :link:" >>$GITHUB_STEP_SUMMARY
+-          echo "\`${{ inputs.chainlinkVersion }}\`" >>$GITHUB_STEP_SUMMARY
+-          echo "### chainlink-tests image tag for this test run :ship:" >>$GITHUB_STEP_SUMMARY
+-          echo "\`${GITHUB_SHA}\`" >>$GITHUB_STEP_SUMMARY
+-
+-      - name: Add mask
+-        run: |
+-          EVM_URLS=$(jq -r '.inputs.wsURL' $GITHUB_EVENT_PATH)
+-          EVM_HTTP_URLS=$(jq -r '.inputs.httpURL' $GITHUB_EVENT_PATH)
+-          EVM_KEYS=$(jq -r '.inputs.fundingPrivateKey' $GITHUB_EVENT_PATH)
+-          SLACK_USER=$(jq -r '.inputs.slackMemberID' $GITHUB_EVENT_PATH)
+-          echo ::add-mask::$EVM_URLS
+-          echo ::add-mask::$EVM_HTTP_URLS
+-          echo ::add-mask::$EVM_KEYS
+-          echo ::add-mask::$SLACK_USER
+-          echo EVM_URLS=$EVM_URLS >> $GITHUB_ENV
+-          echo EVM_HTTP_URLS=$EVM_HTTP_URLS >> $GITHUB_ENV
+-          echo EVM_KEYS=$EVM_KEYS >> $GITHUB_ENV
+-          echo SLACK_USER=$SLACK_USER >> $GITHUB_ENV
+-          while IFS=',' read -ra EVM_URLS_2; do
+-          for i in "${EVM_URLS_2[@]}"; do
+-              echo ::add-mask::$i
+-            done
+-          done <<< "$EVM_URLS"
+-          while IFS=',' read -ra EVM_HTTP_URLS_2; do
+-            for i in "${EVM_HTTP_URLS_2[@]}"; do
+-              echo ::add-mask::$i
+-            done
+-          done <<< "$EVM_HTTP_URLS"
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ env.REF_NAME }}
+-      - name: Build Test Image
+-        uses: ./.github/actions/build-test-image
+-        with:
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ACCOUNT_NUMBER: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+-      - name: Run Tests
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        env:
+-          DETACH_RUNNER: true
+-          TEST_SUITE: benchmark
+-          TEST_ARGS: -test.timeout 720h
+-          ENV_JOB_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink-tests:${{ github.sha }}
+-          INTERNAL_DOCKER_REPO: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com
+-        with:
+-          test_command_to_run: cd integration-tests && go test -timeout 30m -v -run ^TestAutomationBenchmark$ ./benchmark -count=1
+-          test_download_vendor_packages_command: make gomod
+-          cl_repo: ${{ inputs.chainlinkImage }}
+-          cl_image_tag: ${{ inputs.chainlinkVersion }}
+-          token: ${{ secrets.GITHUB_TOKEN }}
+-          should_cleanup: false
+-          go_mod_path: ./integration-tests/go.mod
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: ${{ inputs.network }} Automation Benchmark Test
+-          test-results-file: '{"testType":"go","filePath":"/tmp/gotest.log"}'
+-        continue-on-error: true
+diff --git a/.github/workflows/automation-ondemand-tests.yml b/.github/workflows/automation-ondemand-tests.yml
+deleted file mode 100644
+index d808c26f801..00000000000
+--- a/.github/workflows/automation-ondemand-tests.yml
++++ /dev/null
+@@ -1,201 +0,0 @@
+-name: Automation On Demand Tests
+-on:
+-  workflow_dispatch:
+-    inputs:
+-      chainlinkVersion:
+-        description: Chainlink image version to use
+-        required: false
+-        type: string
+-      chainlinkImage:
+-        description: Chainlink image repo to use (Leave empty to build from head/ref)
+-        required: false
+-        type: string
+-
+-env:
+-  ENV_JOB_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink-tests:${{ github.sha }}
+-  CHAINLINK_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink
+-
+-jobs:
+-  build-chainlink:
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    strategy:
+-      matrix:
+-        image:
+-          - name: ""
+-            dockerfile: core/chainlink.Dockerfile
+-            tag-suffix: ""
+-          - name: (plugins)
+-            dockerfile: plugins/chainlink.Dockerfile
+-            tag-suffix: -plugins
+-    name: Build Chainlink Image ${{ matrix.image.name }}
+-    runs-on: ubuntu20.04-16cores-64GB
+-    steps:
+-      - name: Collect Metrics
+-        if: inputs.chainlinkImage == ''
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Build Chainlink Image ${{ matrix.image.name }}
+-        continue-on-error: true
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.head_ref || github.ref_name }}
+-      - name: Check if image exists
+-        if: inputs.chainlinkImage == ''
+-        id: check-image
+-        uses: smartcontractkit/chainlink-github-actions/docker/image-exists@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          repository: chainlink
+-          tag: ${{ github.sha }}${{ matrix.image.tag-suffix }}
+-          AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-      - name: Build Image
+-        if: steps.check-image.outputs.exists == 'false' && inputs.chainlinkImage == ''
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/build-image@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          cl_repo: smartcontractkit/chainlink
+-          cl_ref: ${{ github.sha }}
+-          cl_dockerfile: ${{ matrix.image.dockerfile }}
+-          push_tag: ${{ env.CHAINLINK_IMAGE }}:${{ github.sha }}${{ matrix.image.tag-suffix }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-      - name: Print Chainlink Image Built
+-        if: inputs.chainlinkImage == ''
+-        run: |
+-          echo "### chainlink node image tag used for this test run :link:" >>$GITHUB_STEP_SUMMARY
+-          echo "\`${GITHUB_SHA}\`" >>$GITHUB_STEP_SUMMARY
+-
+-  build-test-image:
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    name: Build Test Image
+-    runs-on: ubuntu20.04-16cores-64GB
+-    steps:
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Build Test Image
+-        continue-on-error: true
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.head_ref || github.ref_name }}
+-      - name: Build Test Image
+-        uses: ./.github/actions/build-test-image
+-        with:
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ACCOUNT_NUMBER: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+-
+-  automation-on-demand-tests:
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    needs: [ build-chainlink, build-test-image ]
+-    env:
+-      CHAINLINK_COMMIT_SHA: ${{ github.sha }}
+-      CHAINLINK_ENV_USER: ${{ github.actor }}
+-      TEST_LOG_LEVEL: debug
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        tests:
+-          - name: chaos
+-            suite: chaos
+-            nodes: 5
+-            os: ubuntu-latest
+-            pyroscope_env: ci-automation-on-demand-chaos
+-            network: SIMULATED
+-            command: -run ^TestAutomationChaos$ ./chaos
+-          - name: reorg
+-            suite: reorg
+-            nodes: 1
+-            os: ubuntu-latest
+-            pyroscope_env: ci-automation-on-demand-reorg
+-            network: SIMULATED_NONDEV
+-            command: -run ^TestAutomationReorg$ ./reorg
+-          - name: upgrade
+-            suite: smoke
+-            nodes: 1
+-            os: ubuntu-latest
+-            pyroscope_env: ci-automation-on-demand-upgrade
+-            network: SIMULATED
+-            command: -run ^TestAutomationNodeUpgrade$ ./smoke
+-    runs-on: ${{ matrix.tests.os }}
+-    name: Automation On Demand ${{ matrix.tests.name }} Test
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.head_ref || github.ref_name }}
+-      - name: Determine build to use
+-        id: determine-build
+-        shell: bash
+-        run: |
+-          if [[ "${{ inputs.chainlinkImage }}" == "" ]]; then
+-            echo "image=${{ env.CHAINLINK_IMAGE }}" >>$GITHUB_OUTPUT
+-            echo "version=${{ github.sha }}" >>$GITHUB_OUTPUT
+-            echo "upgrade_version=${{ github.sha }}" >>$GITHUB_OUTPUT
+-          else
+-            echo "image=${{ inputs.chainlinkImage }}" >>$GITHUB_OUTPUT
+-            echo "version=${{ inputs.chainlinkVersion }}" >>$GITHUB_OUTPUT
+-            echo "upgrade_version=${{ inputs.chainlinkVersion }}" >>$GITHUB_OUTPUT
+-          fi
+-          if [[ "${{ matrix.tests.name }}" == "upgrade" ]]; then
+-            echo "image=${{ env.CHAINLINK_IMAGE }}" >>$GITHUB_OUTPUT
+-            echo "version=develop" >>$GITHUB_OUTPUT
+-          fi
+-      - name: Run Tests
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        env:
+-          PYROSCOPE_SERVER: ${{ matrix.tests.pyroscope_env == '' && '' || !startsWith(github.ref, 'refs/tags/') && '' || secrets.QA_PYROSCOPE_INSTANCE }} # Avoid sending blank envs https://github.com/orgs/community/discussions/25725
+-          PYROSCOPE_ENVIRONMENT: ${{ matrix.tests.pyroscope_env }}
+-          PYROSCOPE_KEY: ${{ secrets.QA_PYROSCOPE_KEY }}
+-          SELECTED_NETWORKS: ${{ matrix.tests.network }}
+-          TEST_SUITE: ${{ matrix.tests.suite }}
+-          TEST_UPGRADE_VERSION: ${{ steps.determine-build.outputs.upgrade_version }}
+-          TEST_UPGRADE_IMAGE: ${{ env.CHAINLINK_IMAGE }}
+-        with:
+-          test_command_to_run: make test_need_operator_assets && cd ./integration-tests && go test -timeout 30m -count=1 -json -test.parallel=${{ matrix.tests.nodes }} ${{ matrix.tests.command }} 2>&1 | tee /tmp/gotest.log | gotestfmt
+-          test_download_vendor_packages_command: cd ./integration-tests && go mod download
+-          cl_repo: ${{ steps.determine-build.outputs.image }}
+-          cl_image_tag: ${{ steps.determine-build.outputs.version }}
+-          artifacts_location: ./integration-tests/${{ matrix.tests.suite }}/logs
+-          publish_check_name: Automation On Demand Results ${{ matrix.tests.name }}
+-          token: ${{ secrets.GITHUB_TOKEN }}
+-          go_mod_path: ./integration-tests/go.mod
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+-      - name: Upload test log
+-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
+-        if: failure()
+-        with:
+-          name: test-log-${{ matrix.tests.name }}
+-          path: /tmp/gotest.log
+-          retention-days: 7
+-        continue-on-error: true
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Automation On Demand ${{ matrix.tests.name }} Test
+-          test-results-file: '{"testType":"go","filePath":"/tmp/gotest.log"}'
+-        continue-on-error: true
+diff --git a/.github/workflows/bash-cicd-scripts.yml b/.github/workflows/bash-cicd-scripts.yml
+deleted file mode 100644
+index 21a884a4384..00000000000
+--- a/.github/workflows/bash-cicd-scripts.yml
++++ /dev/null
+@@ -1,61 +0,0 @@
+-name: Bash CICD Scripts
+-
+-on:
+-  pull_request:
+-
+-jobs:
+-  changes:
+-    name: detect changes
+-    runs-on: ubuntu-latest
+-    outputs:
+-      bash-cicd-scripts-src: ${{ steps.bash-cicd-scripts.outputs.src }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50 # v2.11.1
+-        id: bash-cicd-scripts
+-        with:
+-          filters: |
+-            src:
+-            - '.github/scripts/bash/**'
+-            - '.github/workflows/bash-cicd-scripts.yml'
+-  shellcheck:
+-    name: ShellCheck Lint
+-    runs-on: ubuntu-latest
+-    needs: [changes]
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Run ShellCheck
+-        if: needs.changes.outputs.bash-cicd-scripts-src == 'true'
+-        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # v2.0.0
+-        with:
+-          scandir: './.github/scripts/bash'
+-  shellspec:
+-    name: ShellSpec Tests
+-    runs-on: ubuntu-latest
+-    needs: [changes]
+-    defaults:
+-      run:
+-        shell: bash
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Install shellspec
+-        if: needs.changes.outputs.bash-cicd-scripts-src == 'true'
+-        env:
+-          VERSION: 0.28.1
+-          VERSION_SHA256SUM: 350d3de04ba61505c54eda31a3c2ee912700f1758b1a80a284bc08fd8b6c5992
+-          GZ_TAR_FILE: shellspec-dist.tar.gz
+-        run: |
+-          curl -sSfL "https://github.com/shellspec/shellspec/releases/download/${VERSION}/shellspec-dist.tar.gz" \
+-            --output "${GZ_TAR_FILE}"
+-          echo "Checking sha256sum of ShellSpec released archive."
+-          echo "${VERSION_SHA256SUM} ${GZ_TAR_FILE}" | sha256sum --check
+-          tar -xzf "${GZ_TAR_FILE}" -C "${HOME}/.local"
+-          ln -s "${HOME}/.local/shellspec/shellspec" /usr/local/bin/shellspec
+-          shellspec --version
+-      - name: Run shellspec tests
+-        if: needs.changes.outputs.bash-cicd-scripts-src == 'true'
+-        working-directory: ./.github/scripts/bash
+-        run: shellspec
+diff --git a/.github/workflows/build-publish-develop.yml b/.github/workflows/build-publish-develop.yml
+deleted file mode 100644
+index 22f9ce81f7f..00000000000
+--- a/.github/workflows/build-publish-develop.yml
++++ /dev/null
+@@ -1,48 +0,0 @@
+-name: 'Push develop to private ECR'
+-
+-on:
+-  push:
+-    branches:
+-      - develop
+-
+-jobs:
+-  push-chainlink-develop:
+-    runs-on: ubuntu-20.04
+-    environment: build-develop
+-    permissions:
+-      id-token: write
+-      contents: read
+-    strategy:
+-      matrix:
+-        image:
+-          - name: ""
+-            dockerfile: core/chainlink.Dockerfile
+-            tag-suffix: ""
+-          - name: (plugins)
+-            dockerfile: plugins/chainlink.Dockerfile
+-            tag-suffix: -plugins
+-    name: push-chainlink-develop ${{ matrix.image.name }}
+-    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-
+-      - name: Build, sign and publish chainlink image
+-        uses: ./.github/actions/build-sign-publish-chainlink
+-        with:
+-          publish: true
+-          aws-role-to-assume: ${{ secrets.AWS_OIDC_IAM_ROLE_ARN }}
+-          aws-role-duration-seconds: ${{ secrets.AWS_ROLE_DURATION_SECONDS }}
+-          aws-region: ${{ secrets.AWS_REGION }}
+-          ecr-hostname: ${{ secrets.AWS_DEVELOP_ECR_HOSTNAME }}
+-          ecr-image-name: chainlink
+-          ecr-tag-suffix: ${{ matrix.image.tag-suffix }}
+-          dockerfile: ${{ matrix.image.dockerfile }}
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: push-chainlink-develop ${{ matrix.image.name }}
+-        continue-on-error: true
+diff --git a/.github/workflows/build-publish.yml b/.github/workflows/build-publish.yml
+deleted file mode 100644
+index e0d8a77b570..00000000000
+--- a/.github/workflows/build-publish.yml
++++ /dev/null
+@@ -1,58 +0,0 @@
+-name: 'Build Chainlink and Publish'
+-
+-on:
+-  # Mimics old circleci behaviour
+-  push:
+-    tags:
+-      - 'v*'
+-    branches:
+-      - master
+-      - 'release/**'
+-
+-jobs:
+-  checks:
+-    name: 'Checks'
+-    runs-on: ubuntu-20.04
+-    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Check for VERSION file bump on tags
+-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+-        uses: ./.github/actions/version-file-bump
+-        with:
+-          github-token: ${{ secrets.GITHUB_TOKEN }}
+-
+-  build-sign-publish-chainlink:
+-    needs: [checks]
+-    if: ${{ ! startsWith(github.ref_name, 'release/') }}
+-    runs-on: ubuntu-20.04
+-    environment: build-publish
+-    permissions:
+-      id-token: write
+-      contents: read
+-    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-
+-      - name: Build, sign and publish chainlink image
+-        uses: ./.github/actions/build-sign-publish-chainlink
+-        with:
+-          publish: true
+-          aws-role-to-assume: ${{ secrets.AWS_OIDC_IAM_ROLE_ARN }}
+-          aws-role-duration-seconds: ${{ secrets.AWS_ROLE_DURATION_SECONDS }}
+-          aws-region: ${{ secrets.AWS_REGION }}
+-          sign-images: true
+-          sign-method: 'keypair'
+-          cosign-private-key: ${{ secrets.COSIGN_PRIVATE_KEY }}
+-          cosign-public-key: ${{ secrets.COSIGN_PUBLIC_KEY }}
+-          cosign-password: ${{ secrets.COSIGN_PASSWORD }}
+-          verify-signature: true
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: build-sign-publish-chainlink
+-        continue-on-error: true
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+deleted file mode 100644
+index 42efe1dadab..00000000000
+--- a/.github/workflows/build.yml
++++ /dev/null
+@@ -1,30 +0,0 @@
+-name: 'Build Chainlink'
+-
+-on:
+-  pull_request:
+-  push:
+-    branches:
+-      - master
+-
+-jobs:
+-
+-  build-chainlink:
+-    runs-on: ubuntu-20.04
+-    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-
+-      - name: Build chainlink image
+-        uses: ./.github/actions/build-sign-publish-chainlink
+-        with:
+-          publish: false
+-          sign-images: false
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: build-chainlink
+-        continue-on-error: true
+diff --git a/.github/workflows/changelog.yml b/.github/workflows/changelog.yml
+deleted file mode 100644
+index 7378a227ecb..00000000000
+--- a/.github/workflows/changelog.yml
++++ /dev/null
+@@ -1,39 +0,0 @@
+-#
+-# This action checks PRs to see if any CHANGELOG* files were updated.
+-# If none were, it will add a message to the PR asking if it would make sense to do so.
+-#
+-name: Changelog
+-
+-on: pull_request
+-
+-jobs:
+-  changelog:
+-    # For security reasons, GITHUB_TOKEN is read-only on forks, so we cannot leave comments on PRs.
+-    # This check skips the job if it is detected we are running on a fork.
+-    if: ${{ github.event.pull_request.head.repo.full_name == 'smartcontractkit/chainlink' }}
+-    name: Changelog checker
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Check for changed files
+-        id: changedfiles
+-        uses: umani/changed-files@0239328a3a6268aad16af7c3e4efc78e32d6c0f0 # Version 4.0.1
+-        with:
+-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+-          pattern: '^docs/CHANGELOG.*$'
+-      - name: Make a comment
+-        uses: unsplash/comment-on-pr@ffe8f97ccc63ce12c3c23c6885b169db67958d3b # Version 1.3.0
+-        env:
+-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+-        if: contains(steps.changedfiles.outputs.files_updated, 'CHANGELOG') != true && contains(steps.changedfiles.outputs.files_created, 'CHANGELOG') != true
+-        with:
+-          msg: "I see that you haven't updated any CHANGELOG files. Would it make sense to do so?"
+-          check_for_duplicate_msg: true
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Changelog checker
+-        continue-on-error: true
+diff --git a/.github/workflows/ci-core.yml b/.github/workflows/ci-core.yml
+index 8dc29d5db77..ede14c869b0 100644
+--- a/.github/workflows/ci-core.yml
++++ b/.github/workflows/ci-core.yml
+@@ -1,16 +1,12 @@
+ name: CI Core
+ 
+-concurrency:
+-  group: ${{ github.workflow }}-${{ github.ref }}
+-  cancel-in-progress: true
+-
+ # Run on key branches to make sure integration is good, otherwise run on all PR's
+ on:
+   push:
+     branches:
+       - master
+       - develop
+-      - 'release/*'
++      - "release/*"
+       - staging
+       - trying
+       - rollup
+@@ -20,350 +16,89 @@ on:
+     - cron: "0 0 * * *"
+ 
+ jobs:
+-  golangci-changes:
+-    name: detect changes for lint
+-    runs-on: ubuntu-latest
+-    outputs:
+-      src: ${{ steps.golangci-changes.outputs.src }}
++  golangci-docker:
++    runs-on: ubuntu20.04-16cores-64GB
+     steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50 # v2.11.1
+-        id: golangci-changes
++      - uses: actions/checkout@v4
++      - uses: actions/setup-go@v4
+         with:
+-          filters: |
+-            src:
+-            - '**/*.go'
+-            - '**/go.mod'
+-            - '**/go.sum'
+-            - '.golangci.yml'
+-            - '.github/workflows/ci-core.yml'
+-  init:
+-    name: initialize
+-    runs-on: ubuntu-latest
+-    needs: [golangci-changes]
+-    defaults:
+-      run:
++          go-version-file: "go.mod"
++          # If cache is set to true (default), the "prepare environment" will
++          # silently fail with these errors:
++          # Error: /usr/bin/tar: <...>: Cannot open: File exists
++          cache: false
++      - name: test linter manually
+         shell: bash
+-    outputs:
+-      # Determine if `on` event should trigger linting to run
+-      on_trigger_lint: ${{ steps.golangci-lint.outputs.on_trigger }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Check if event should trigger lint
+-        id: golangci-lint
+         env:
+-          GITHUB_EVENT_NAME: ${{ github.event_name }}
+-          GITHUB_BASE_REF: ${{ github.base_ref }}
+-          GITHUB_REF: ${{ github.ref }}
+-          SRC_CHANGED: ${{ needs.golangci-changes.outputs.src }}
+-        run: ./.github/scripts/bash/ontriggerlint.sh | tee -a $GITHUB_OUTPUT
++          GH_TOKEN: ${{ github.token }}
++        run: |
++          gh pr diff 10555 > pr.diff && \
++          [ -d "./golangci-lint" ] || mkdir ./golangci-lint && \
++          docker run --rm -v $(pwd):/app -w /app golangci/golangci-lint:v1.54.2 golangci-lint run \
++          --new-from-patch=/app/pr.diff \
++          --out-format colored-line-number
+ 
+-  golangci:
+-    name: lint
++  golangci-latest:
+     runs-on: ubuntu-latest
+-    needs: [init]
+     steps:
+-      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          fetch-depth: 0
++      - uses: actions/checkout@v4
+       - uses: actions/setup-go@v4
+-        if: needs.init.outputs.on_trigger_lint == 'true'
+         with:
+-          go-version-file: 'go.mod'
++          go-version-file: "go.mod"
+           # If cache is set to true (default), the "prepare environment" will
+           # silently fail with these errors:
+           # Error: /usr/bin/tar: <...>: Cannot open: File exists
+           cache: false
+-      - name: golangci-lint
+-        if: needs.init.outputs.on_trigger_lint == 'true'
+-        uses: golangci/golangci-lint-action@3a919529898de77ec3da873e3063ca4b10e7f5cc # v3.7.0
+-        with:
+-          version: v1.53.3
+-          only-new-issues: ${{ github.event.schedule == '' }} # show only new issues, unless it's a scheduled run
+-          args: --out-format checkstyle:golangci-lint-report.xml
+-      - name: Print lint report artifact
+-        if: always()
+-        run: test -f golangci-lint-report.xml && cat golangci-lint-report.xml || true
+-      - name: Store lint report artifact
+-        if: always()
+-        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # v3.1.0
+-        with:
+-          name: golangci-lint-report
+-          path: golangci-lint-report.xml
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: lint
+-        continue-on-error: true
+-
+-  split-packages:
+-    name: Split Go Tests
+-    runs-on: ubuntu-latest
+-    outputs:
+-      splits: ${{ steps.split.outputs.splits }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Setup Go
+-        uses: ./.github/actions/setup-go
+-        with:
+-          only-modules: "true"
+-      - name: Touching core/web/assets/index.html
+-        run: mkdir -p core/web/assets && touch core/web/assets/index.html
+-      - name: Generate splits
+-        id: split
+-        uses: ./.github/actions/split-tests
+-        with:
+-          config: ./ci.json
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Split Go Tests
+-        continue-on-error: true
+-
+-  core:
+-    needs: [split-packages]
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        cmd: ["go_core_tests", "go_core_race_tests"]
+-        split: ${{ fromJson(needs.split-packages.outputs.splits) }}
+-    name: Core Tests (${{ matrix.cmd }}) ${{ matrix.split.id }}
+-    runs-on: ubuntu-latest
+-    env:
+-      CL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chainlink_test?sslmode=disable
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Setup node
+-        uses: actions/setup-node@v3
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-        with:
+-          prod: "true"
+-      - name: Setup Go
+-        uses: ./.github/actions/setup-go
+-      - name: Setup Solana
+-        uses: ./.github/actions/setup-solana
+-      - name: Setup wasmd
+-        uses: ./.github/actions/setup-wasmd
+-      - name: Setup Postgres
+-        uses: ./.github/actions/setup-postgres
+-      - name: Touching core/web/assets/index.html
+-        run: mkdir -p core/web/assets && touch core/web/assets/index.html
+-      - name: Download Go vendor packages
+-        run: go mod download
+-      - name: Build binary
+-        run: go build -tags test -o chainlink.test .
+-      - name: Setup DB
+-        run: ./chainlink.test local db preparetest
+-      - name: Increase Race Timeout
+-        if: github.event.schedule != ''
+-        run: |
+-          echo "TIMEOUT=10m" >> $GITHUB_ENV
+-          echo "COUNT=50" >> $GITHUB_ENV
+-      - name: Run tests
+-        id: run-tests
+-        env:
+-          OUTPUT_FILE: ./output.txt
+-          USE_TEE: false
+-        run: ./tools/bin/${{ matrix.cmd }} "${{ matrix.split.pkgs }}"
+-      - name: Print Filtered Test Results
+-        if: failure()
+-        uses: smartcontractkit/chainlink-github-actions/go/go-test-results-parsing@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          results-file: ./output.txt
+-          output-file: ./output-short.txt
+-      - name: Store logs artifacts
+-        if: always()
+-        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # v3.1.0
+-        with:
+-          name: ${{ matrix.cmd }}_${{ matrix.split.idx }}_logs
+-          path: |
+-            ./output.txt
+-            ./output-short.txt
+-            ./race.*
+-            ./coverage.txt
+-      - name: Print postgres logs
+-        if: always()
+-        run: docker compose logs postgres
+-        working-directory: ./.github/actions/setup-postgres
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Core Tests (${{ matrix.cmd }}) ${{ matrix.split.id }}
+-          test-results-file: '{"testType":"go","filePath":"./output.txt"}'
+-        continue-on-error: true
+-
+-  # Satisfy required check for core tests
+-  # while still allowing for adjustable splitting
+-  core-complete:
+-    needs: [core]
+-    name: Core Tests (${{ matrix.cmd }})
+-    runs-on: ubuntu-latest
+-    if: always()
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        cmd: ["go_core_tests", "go_core_race_tests"]
+-    steps:
+-      - run: echo "${{ matrix.cmd }} have finished"
+-      - name: Check test results
+-        if: needs.core.result != 'success'
+-        run: exit 1
+-      - name: Notify Slack
+-        if: ${{ failure() && matrix.cmd == 'go_core_race_tests' && github.event.schedule != '' }}
+-        uses: slackapi/slack-github-action@e28cf165c92ffef168d23c5c9000cffc8a25e117 # v1.24.0
+-        env:
+-          SLACK_BOT_TOKEN: ${{ secrets.QA_SLACK_API_KEY }}
+-        with:
+-          channel-id: '#topic-data-races'
+-          slack-message: "Race tests failed: ${{ job.html_url }}\n${{ format('https://github.com/smartcontractkit/chainlink/actions/runs/{0}', github.run_id) }}"
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Core Tests (${{ matrix.cmd }})
+-        continue-on-error: true
+-
+-  detect-flakey-tests:
+-    needs: [core]
+-    name: Flakey Test Detection
+-    runs-on: ubuntu-latest
+-    if: always()
+-    env:
+-      CL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chainlink_test?sslmode=disable
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Setup node
+-        uses: actions/setup-node@v3
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-        with:
+-          prod: "true"
+-      - name: Setup Go
+-        uses: ./.github/actions/setup-go
+-      - name: Setup Postgres
+-        uses: ./.github/actions/setup-postgres
+-      - name: Touching core/web/assets/index.html
+-        run: mkdir -p core/web/assets && touch core/web/assets/index.html
+-      - name: Download Go vendor packages
+-        run: go mod download
+-      - name: Build binary
+-        run: go build -tags test -o chainlink.test .
+-      - name: Setup DB
+-        run: ./chainlink.test local db preparetest
+-      - name: Load test outputs
+-        uses: actions/download-artifact@v3
+-        with:
+-          path: ./artifacts
+-      - name: Build flakey test runner
+-        run: go build ./tools/flakeytests/cmd/runner
+-      - name: Re-run tests
++      - name: test linter manually
++        shell: bash
+         env:
+-          GRAFANA_CLOUD_BASIC_AUTH: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          GRAFANA_CLOUD_HOST: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          GITHUB_EVENT_PATH: ${{ github.event_path }}
++          GH_TOKEN: ${{ github.token }}
+         run: |
+-          ./runner \
+-            -grafana_auth=$GRAFANA_CLOUD_BASIC_AUTH \
+-            -grafana_host=$GRAFANA_CLOUD_HOST \
+-            -gh_sha=$GITHUB_SHA \
+-            -gh_event_path=$GITHUB_EVENT_PATH \
+-            -command=./tools/bin/go_core_tests \
+-            `ls -R ./artifacts/go_core_tests*/output.txt`
+-      - name: Store logs artifacts
+-        if: always()
+-        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # v3.1.0
+-        with:
+-          name: flakey_test_runner_logs
+-          path: |
+-            ./output.txt
++          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.54.2 && \
++          gh pr diff 10555 > pr.diff && env -i HOME="$HOME" PATH="$PATH" ./bin/golangci-lint run --out-format colored-line-number --new-from-patch=pr.diff
+ 
+-  scan:
+-    name: SonarQube Scan
+-    needs: [core]
+-    if: ${{ always() }}
+-    runs-on: ubuntu-latest
++  golangci-2:
++    name: lint-2
++    runs-on: ubuntu20.04-16cores-64GB
+     steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
++      - uses: actions/checkout@v4
++      - uses: actions/setup-go@v4
+         with:
+-          fetch-depth: 0 # fetches all history for all tags and branches to provide more metadata for sonar reports
+-      - name: Download all workflow run artifacts
+-        uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7 # v3.0.1
+-      - name: Set SonarQube Report Paths
+-        id: sonarqube_report_paths
++          go-version-file: "go.mod"
++          # If cache is set to true (default), the "prepare environment" will
++          # silently fail with these errors:
++          # Error: /usr/bin/tar: <...>: Cannot open: File exists
++          cache: false
++      - name: test linter manually
+         shell: bash
+-        run: |
+-          echo "sonarqube_tests_report_paths=$(find go_core_tests_*_logs -name output.txt | paste -sd "," -)" >> $GITHUB_OUTPUT
+-          echo "sonarqube_coverage_report_paths=$(find go_core_tests_*_logs -name coverage.txt | paste -sd "," -)" >> $GITHUB_OUTPUT
+-      - name: SonarQube Scan
+-        uses: sonarsource/sonarqube-scan-action@69c1a75940dec6249b86dace6b630d3a2ae9d2a7 # v2.0.1
+-        with:
+-          args: >
+-            -Dsonar.go.tests.reportPaths=${{ steps.sonarqube_report_paths.outputs.sonarqube_tests_report_paths }}
+-            -Dsonar.go.coverage.reportPaths=${{ steps.sonarqube_report_paths.outputs.sonarqube_coverage_report_paths }}
+-            -Dsonar.go.golangci-lint.reportPaths=golangci-lint-report/golangci-lint-report.xml
+         env:
+-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: SonarQube Scan
+-        continue-on-error: true
++          GH_TOKEN: ${{ github.token }}
++        run: |
++          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.54.2 && \
++          gh pr diff 10555 > pr.diff && env -i HOME="$HOME" PATH="$PATH" ./bin/golangci-lint run --out-format colored-line-number --new-from-patch=pr.diff
+ 
+-  clean:
+-    name: Clean Go Tidy & Generate
+-    runs-on: ubuntu-latest
+-    defaults:
+-      run:
+-        shell: bash
++  golangci:
++    name: lint
++    runs-on: ubuntu20.04-16cores-64GB
+     steps:
+-      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          fetch-depth: 0
+-      - name: Setup Go
+-        uses: ./.github/actions/setup-go
+-        with:
+-          only-modules: "true"
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-      - run: make generate # generate install go deps
+-      - name: Ensure clean after generate
+-        run: git diff --stat --exit-code
+-      - run: make gomodtidy
+-      - name: Ensure clean after tidy
+-        run: git diff --minimal --exit-code
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
++      - uses: actions/checkout@v4
++      - uses: actions/setup-go@v4
+         with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Clean Go Tidy & Generate
++          go-version-file: "go.mod"
++          # If cache is set to true (default), the "prepare environment" will
++          # silently fail with these errors:
++          # Error: /usr/bin/tar: <...>: Cannot open: File exists
++          cache: false
++      - name: golangci-lint
+         continue-on-error: true
++        uses: golangci/golangci-lint-action@3a919529898de77ec3da873e3063ca4b10e7f5cc # v3.7.0
++        with:
++          version: v1.54.2
++          only-new-issues: ${{ github.event.schedule == '' }} # show only new issues, unless it's a scheduled run
++          args: --out-format colored-line-number
++          skip-cache: true
++
++      - name: test linter manually
++        env:
++          GH_TOKEN: ${{ github.token }}
++        run: gh pr diff 10555 > pr.diff && env -i HOME="$HOME" PATH="$PATH" golangci-lint run --out-format colored-line-number --new-from-patch=pr.diff
+diff --git a/.github/workflows/codeql-analysis.yml b/.github/workflows/codeql-analysis.yml
+deleted file mode 100644
+index 8d1fe137f67..00000000000
+--- a/.github/workflows/codeql-analysis.yml
++++ /dev/null
+@@ -1,56 +0,0 @@
+-name: 'CodeQL'
+-
+-on:
+-  push:
+-    branches:
+-      - develop
+-      - staging
+-      - trying
+-      - rollup
+-  pull_request:
+-    # The branches below must be a subset of the branches above
+-    branches: [develop]
+-  schedule:
+-    - cron: '23 19 * * 4'
+-
+-jobs:
+-  analyze:
+-    name: Analyze ${{ matrix.language }}
+-    runs-on: ubuntu20.04-4cores-16GB
+-
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        language: ['go', 'javascript']
+-
+-    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-
+-      - name: Set up Go
+-        if: ${{ matrix.language == 'go' }}
+-        uses: actions/setup-go@v4
+-        with:
+-          go-version-file: 'go.mod'
+-
+-      - name: Touching core/web/assets/index.html
+-        if: ${{ matrix.language == 'go' }}
+-        run: mkdir -p core/web/assets && touch core/web/assets/index.html
+-
+-      - name: Initialize CodeQL
+-        uses: github/codeql-action/init@cdcdbb579706841c47f7063dda365e292e5cad7a # v2.13.4
+-        with:
+-          languages: ${{ matrix.language }}
+-
+-      - name: Perform CodeQL Analysis
+-        uses: github/codeql-action/analyze@cdcdbb579706841c47f7063dda365e292e5cad7a # v2.13.4
+-
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Analyze ${{ matrix.language }}
+-        continue-on-error: true
+diff --git a/.github/workflows/dependency-check.yml b/.github/workflows/dependency-check.yml
+deleted file mode 100644
+index 4bcab9091dd..00000000000
+--- a/.github/workflows/dependency-check.yml
++++ /dev/null
+@@ -1,55 +0,0 @@
+-name: Dependency Vulnerability Check
+-
+-on:
+-  push:
+-
+-jobs:
+-  changes:
+-    name: Detect changes
+-    runs-on: ubuntu-latest
+-    outputs:
+-      changes: ${{ steps.changes.outputs.src }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50 # v2.11.1
+-        id: changes
+-        with:
+-          filters: |
+-            src:
+-              - '**/*go.sum'
+-              - '**/*go.mod'
+-              - '.github/workflows/dependency-check.yml'
+-  Go:
+-    runs-on: ubuntu-latest
+-    needs: [changes]
+-    steps:
+-      - name: Check out code
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-
+-      - name: Set up Go
+-        if: needs.changes.outputs.src == 'true'
+-        uses: actions/setup-go@v4
+-        with:
+-          go-version-file: 'go.mod'
+-        id: go
+-
+-      - name: Write Go Modules list
+-        if: needs.changes.outputs.src == 'true'
+-        run: go list -json -m all > go.list
+-
+-      - name: Check vulnerabilities
+-        if: needs.changes.outputs.src == 'true'
+-        uses: sonatype-nexus-community/nancy-github-action@main
+-        with:
+-          nancyVersion: "v1.0.39"
+-
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Go
+-        continue-on-error: true
+diff --git a/.github/workflows/generic-test-runner.yml b/.github/workflows/generic-test-runner.yml
+deleted file mode 100644
+index dc194ab5bec..00000000000
+--- a/.github/workflows/generic-test-runner.yml
++++ /dev/null
+@@ -1,141 +0,0 @@
+-name: Generic Test Runner
+-on:
+-  workflow_dispatch:
+-    inputs:
+-      network:
+-        description: 'Network to run tests against'
+-        required: true
+-        default: 'SIMULATED'
+-      wsURL:
+-        description: 'Chain WS URL (Skip with SIMULATED)'
+-        required: false
+-      httpURL:
+-        description: 'Chain HTTP URL (Skip with SIMULATED)'
+-        required: false
+-      fundingKey:
+-        description: 'Private key to fund test (Skip with SIMULATED)'
+-        required: false
+-      directory:
+-        description: 'Directory to run tests from'
+-        required: true
+-        default: 'smoke'
+-      test:
+-        description: 'Test to run'
+-        required: true
+-        default: 'OCRBasic'
+-      testInputs:
+-        description: 'Custom test inputs'
+-        required: false
+-        default: ''
+-env:
+-  ENV_JOB_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink-tests:${{ github.sha }}
+-  CHAINLINK_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink
+-
+-jobs:
+-  build-chainlink:
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    strategy:
+-      matrix:
+-        image:
+-          - name: ""
+-            dockerfile: core/chainlink.Dockerfile
+-            tag-suffix: ""
+-          - name: (plugins)
+-            dockerfile: plugins/chainlink.Dockerfile
+-            tag-suffix: -plugins
+-    name: Build Chainlink Image ${{ matrix.image.name }}
+-    runs-on: ubuntu20.04-16cores-64GB
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Check if image exists
+-        id: check-image
+-        uses: smartcontractkit/chainlink-github-actions/docker/image-exists@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          repository: chainlink
+-          tag: ${{ github.sha }}${{ matrix.image.tag-suffix }}
+-          AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-      - name: Build Image
+-        if: steps.check-image.outputs.exists == 'false'
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/build-image@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          cl_repo: smartcontractkit/chainlink
+-          cl_ref: ${{ github.sha }}
+-          cl_dockerfile: ${{ matrix.image.dockerfile }}
+-          push_tag: ${{ env.CHAINLINK_IMAGE }}:${{ github.sha }}${{ matrix.image.tag-suffix }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-      - name: Print Chainlink Image Built
+-        run: |
+-          echo "### chainlink node image tag used for this test run :link:" >>$GITHUB_STEP_SUMMARY
+-          echo "\`${GITHUB_SHA}\`" >>$GITHUB_STEP_SUMMARY
+-
+-  build-test-image:
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    name: Build Test Image
+-    runs-on: ubuntu20.04-16cores-64GB
+-    env:
+-      TEST_SUITE: ${{ github.event.inputs.directory }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Build Test Image
+-        uses: ./.github/actions/build-test-image
+-        with:
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ACCOUNT_NUMBER: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+-  
+-  test:
+-    runs-on: ubuntu-latest
+-    needs: [build-chainlink, build-test-image]
+-    name: Run Test
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    env:
+-      CHAINLINK_ENV_USER: ${{ github.actor }}
+-      CHAINLINK_COMMIT_SHA: ${{ github.sha }}
+-      TEST_SUITE: ${{ github.event.inputs.directory }}
+-      SELECTED_NETWORKS: ${{ github.event.inputs.network }}
+-      TEST_LOG_LEVEL: debug
+-    steps:
+-      - name: Mask Inputs
+-        run: |
+-          EVM_URLS=$(jq -r '.inputs.wsURL' $GITHUB_EVENT_PATH)
+-          EVM_HTTP_URLS=$(jq -r '.inputs.httpURL' $GITHUB_EVENT_PATH)
+-          EVM_KEYS=$(jq -r '.inputs.fundingKey' $GITHUB_EVENT_PATH)
+-
+-          echo ::add-mask::$EVM_URLS
+-          echo ::add-mask::$EVM_HTTP_URLS
+-          echo ::add-mask::$EVM_KEYS
+-
+-          echo EVM_URLS=$EVM_URLS >> $GITHUB_ENV
+-          echo EVM_HTTP_URLS=$EVM_HTTP_URLS >> $GITHUB_ENV
+-          echo EVM_KEYS=$EVM_KEYS >> $GITHUB_ENV
+-      - name: Debug Input
+-        run: echo ${{ github.event.inputs.testInputs }}
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Run Tests
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          test_command_to_run: make test_need_operator_assets && cd ./integration-tests && go test -timeout 1h -count=1 ./${{ github.event.inputs.directory }} -run ${{ github.event.inputs.test }} -v -args ${{ github.event.inputs.test-inputs }}
+-          test_download_vendor_packages_command: cd ./integration-tests && go mod download
+-          cl_repo: ${{ env.CHAINLINK_IMAGE }}
+-          cl_image_tag: ${{ github.sha }}
+-          artifacts_location: ./integration-tests/smoke/logs
+-          publish_check_name: Generic Test Run
+-          token: ${{ secrets.GITHUB_TOKEN }}
+-          go_mod_path: ./integration-tests/go.mod
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+diff --git a/.github/workflows/goreleaser-build-publish-develop.yml b/.github/workflows/goreleaser-build-publish-develop.yml
+deleted file mode 100644
+index 3a3236cc978..00000000000
+--- a/.github/workflows/goreleaser-build-publish-develop.yml
++++ /dev/null
+@@ -1,88 +0,0 @@
+-name: "Build publish Chainlink develop on private ECR"
+-
+-on:
+-  push:
+-    branches:
+-      - develop
+-
+-jobs:
+-  push-chainlink-develop-goreleaser:
+-    runs-on:
+-      labels: ubuntu20.04-16cores-64GB
+-    outputs:
+-      goreleaser-metadata: ${{ steps.build-sign-publish.outputs.goreleaser-metadata }}
+-      goreleaser-artifacts: ${{ steps.build-sign-publish.outputs.goreleaser-artifacts }}
+-    environment: build-develop
+-    permissions:
+-      id-token: write
+-      contents: read
+-    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Configure aws credentials
+-        uses: aws-actions/configure-aws-credentials@5fd3084fc36e372ff1fff382a39b10d03659f355 # v2.2.0
+-        with:
+-          role-to-assume: ${{ secrets.AWS_OIDC_IAM_ROLE_ARN }}
+-          role-duration-seconds: ${{ secrets.AWS_ROLE_DURATION_SECONDS }}
+-          aws-region: ${{ secrets.AWS_REGION }}
+-      - name: Build, sign, and publish image
+-        id: build-sign-publish
+-        uses: ./.github/actions/goreleaser-build-sign-publish
+-        with:
+-          enable-docker-publish: "true"
+-          docker-registry: ${{ secrets.AWS_DEVELOP_ECR_HOSTNAME }}
+-          enable-goreleaser-snapshot: "true"
+-          goreleaser-exec: ./tools/bin/goreleaser_wrapper
+-          goreleaser-config: .goreleaser.develop.yaml
+-          # ISSUE: https://github.com/golang/go/issues/52690
+-          zig-version: 0.11.0-dev.3380+7e0a02ee2 # TODO: update action to v0.11.x once released
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: push-chainlink-develop-goreleaser
+-        continue-on-error: true
+-  mercury-e2e-tests:
+-    needs: [push-chainlink-develop-goreleaser]
+-    runs-on:
+-      labels: ubuntu-latest
+-    environment: build-develop
+-    permissions:
+-      id-token: write
+-      contents: read
+-    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Configure aws credentials
+-        uses: aws-actions/configure-aws-credentials@5fd3084fc36e372ff1fff382a39b10d03659f355 # v2.2.0
+-        with:
+-          role-to-assume: ${{ secrets.AWS_ROLE_ARN_GATI }}
+-          role-duration-seconds: ${{ secrets.AWS_ROLE_DURATION_SECONDS }}
+-          aws-region: ${{ secrets.AWS_REGION }}
+-      - name: Get Github Token
+-        id: get-gh-token
+-        uses: smartcontractkit/chainlink-github-actions/github-app-token-issuer@main
+-        with:
+-          url: ${{ secrets.GATI_LAMBDA_FUNCTION_URL }}
+-      - name: 'Dispatch Workflow: E2E Functional Tests'
+-        id: dispatch-workflow-e2e-functional-tests
+-        shell: bash
+-        run: |
+-          image_build_metadata=$(jq -n \
+-                                  --arg commit_sha "$GITHUB_SHA" \
+-                                  --arg run_url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+-                                  '{
+-                                    commit_sha: $commit_sha,
+-                                    originating_run_url: $run_url
+-                                  }')
+-          gh workflow run "e2e-functional-tests.yml" \
+-            --repo ${{ secrets.MERCURY_SERVER_REPO }} \
+-            --ref "main" \
+-            --field chainlink-ecr-repo-account="sdlc" \
+-            --field chainlink-image-build-metadata="${image_build_metadata}" \
+-            --field chainlink-image-tag="develop"
+-        env:
+-          GH_TOKEN: ${{ steps.get-gh-token.outputs.access-token }}
+diff --git a/.github/workflows/integration-chaos-tests.yml b/.github/workflows/integration-chaos-tests.yml
+deleted file mode 100644
+index 32f6f522397..00000000000
+--- a/.github/workflows/integration-chaos-tests.yml
++++ /dev/null
+@@ -1,131 +0,0 @@
+-name: Integration Chaos Test
+-on:
+-  schedule:
+-    - cron: "0 0 * * *"
+-  push:
+-    tags:
+-      - "*"
+-  workflow_dispatch:
+-
+-env:
+-  CHAINLINK_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink
+-  ENV_JOB_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink-tests:${{ github.sha }}
+-  TEST_SUITE: chaos
+-  TEST_ARGS: -test.timeout 1h
+-  SELECTED_NETWORKS: SIMULATED
+-  CHAINLINK_COMMIT_SHA: ${{ github.sha }}
+-  CHAINLINK_ENV_USER: ${{ github.actor }}
+-  TEST_LOG_LEVEL: debug
+-
+-jobs:
+-  build-chainlink:
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    name: Build Chainlink Image
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Check if image exists
+-        id: check-image
+-        uses: smartcontractkit/chainlink-github-actions/docker/image-exists@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          repository: chainlink
+-          tag: ${{ github.sha }}
+-          AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-      - name: Build Image
+-        if: steps.check-image.outputs.exists == 'false'
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/build-image@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          cl_repo: smartcontractkit/chainlink
+-          cl_ref: ${{ github.sha }}
+-          push_tag: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink:${{ github.sha }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-      - name: Print Chainlink Image Built
+-        id: push
+-        run: |
+-          echo "### chainlink node image tag used for this test run :link:" >>$GITHUB_STEP_SUMMARY
+-          echo "\`${GITHUB_SHA}\`" >>$GITHUB_STEP_SUMMARY
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Build Chainlink Image
+-        continue-on-error: true
+-
+-  build-test-runner:
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    name: Build Test Runner Image
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Build Test Image
+-        uses: ./.github/actions/build-test-image
+-        with:
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ACCOUNT_NUMBER: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Build Test Runner Image
+-        continue-on-error: true
+-
+-  chaos-tests:
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    name: EVM Pods Chaos Tests
+-    runs-on: ubuntu-latest
+-    needs: [build-test-runner, build-chainlink]
+-    steps:
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: EVM Pods Chaos Tests
+-          test-results-file: '{"testType":"go","filePath":"/tmp/gotest.log"}'
+-        continue-on-error: true
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Run Tests
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          test_command_to_run: make test_need_operator_assets && cd integration-tests && go test -timeout 1h -count=1 -json -test.parallel 11 ./chaos 2>&1 | tee /tmp/gotest.log | gotestfmt
+-          test_download_vendor_packages_command: cd ./integration-tests && go mod download
+-          cl_repo: ${{ env.CHAINLINK_IMAGE }}
+-          cl_image_tag: ${{ github.sha }}
+-          artifacts_location: ./integration-tests/chaos/logs
+-          publish_check_name: EVM Pods Chaos Test Results
+-          token: ${{ secrets.GITHUB_TOKEN }}
+-          go_mod_path: ./integration-tests/go.mod
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+-      - name: Upload test log
+-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
+-        if: failure()
+-        with:
+-          name: Test Results Log
+-          path: /tmp/gotest.log
+-          retention-days: 7
+diff --git a/.github/workflows/integration-tests-publish.yml b/.github/workflows/integration-tests-publish.yml
+deleted file mode 100644
+index d0ce62a71bb..00000000000
+--- a/.github/workflows/integration-tests-publish.yml
++++ /dev/null
+@@ -1,39 +0,0 @@
+-name: Integration Tests Publish
+-# Publish the compiled integration tests
+-
+-on:
+-  push:
+-    branches:
+-      - develop
+-
+-env:
+-  ECR_TAG: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink-tests:develop
+-
+-jobs:
+-  publish-integration-test-image:
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    name: Publish Integration Test Image
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Publish Integration Test Image
+-        continue-on-error: true
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.event.pull_request.head.sha }}
+-      - name: Build Image
+-        uses: ./.github/actions/build-test-image
+-        with:
+-          other_tags: ${{ env.ECR_TAG }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ACCOUNT_NUMBER: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+diff --git a/.github/workflows/integration-tests.yml b/.github/workflows/integration-tests.yml
+deleted file mode 100644
+index 1b0d0d091ed..00000000000
+--- a/.github/workflows/integration-tests.yml
++++ /dev/null
+@@ -1,899 +0,0 @@
+-name: Integration Tests
+-on:
+-  merge_group:
+-  pull_request:
+-  schedule:
+-    - cron: "0 0 * * *"
+-  push:
+-    tags:
+-      - "*"
+-
+-# Only run 1 of this workflow at a time per PR
+-concurrency:
+-  group: integration-tests-chainlink-${{ github.ref }}
+-  cancel-in-progress: true
+-
+-env:
+-  # for run-test variables and environment
+-  ENV_JOB_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink-tests:${{ github.sha }}
+-  CHAINLINK_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink
+-  TEST_SUITE: smoke
+-  TEST_ARGS: -test.timeout 12m
+-  INTERNAL_DOCKER_REPO: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com
+-  MOD_CACHE_VERSION: 2
+-
+-jobs:
+-  changes:
+-    environment: integration
+-    name: Check Paths That Require Tests To Run
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50 # v2.11.1
+-        id: changes
+-        with:
+-          filters: |
+-            src:
+-              - '**/*.go'
+-              - '**/*go.sum'
+-              - '**/*go.mod'
+-              - '.github/workflows/integration-tests.yml'
+-              - '**/*Dockerfile'
+-              - 'core/**/config/**/*.toml'
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Check Paths That Require Tests To Run
+-        continue-on-error: true
+-    outputs:
+-      src: ${{ steps.changes.outputs.src }}
+-
+-  build-chainlink:
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    strategy:
+-      matrix:
+-        image:
+-          - name: ""
+-            dockerfile: core/chainlink.Dockerfile
+-            tag-suffix: ""
+-          - name: (plugins)
+-            dockerfile: plugins/chainlink.Dockerfile
+-            tag-suffix: -plugins
+-    name: Build Chainlink Image ${{ matrix.image.name }}
+-    runs-on: ubuntu20.04-16cores-64GB
+-    needs: [changes]
+-    steps:
+-      - name: Collect Metrics
+-        if: needs.changes.outputs.src == 'true'
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Build Chainlink Image ${{ matrix.image.name }}
+-        continue-on-error: true
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+-      - name: Check if image exists
+-        if: needs.changes.outputs.src == 'true'
+-        id: check-image
+-        uses: smartcontractkit/chainlink-github-actions/docker/image-exists@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          repository: chainlink
+-          tag: ${{ github.sha }}${{ matrix.image.tag-suffix }}
+-          AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-      - name: Build Image
+-        if: steps.check-image.outputs.exists == 'false' && needs.changes.outputs.src == 'true'
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/build-image@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          cl_repo: smartcontractkit/chainlink
+-          cl_ref: ${{ github.sha }}
+-          cl_dockerfile: ${{ matrix.image.dockerfile }}
+-          push_tag: ${{ env.CHAINLINK_IMAGE }}:${{ github.sha }}${{ matrix.image.tag-suffix }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-      - name: Print Chainlink Image Built
+-        if: needs.changes.outputs.src == 'true'
+-        run: |
+-          echo "### chainlink node image tag used for this test run :link:" >>$GITHUB_STEP_SUMMARY
+-          echo "\`${GITHUB_SHA}\`" >>$GITHUB_STEP_SUMMARY
+-
+-  build-test-image:
+-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || contains(join(github.event.pull_request.labels.*.name, ' '), 'build-test-image')
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    name: Build Test Image
+-    runs-on: ubuntu20.04-16cores-64GB
+-    needs: [changes]
+-    steps:
+-      - name: Collect Metrics
+-        if: needs.changes.outputs.src == 'true'
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Build Test Image
+-        continue-on-error: true
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+-      - name: Build Test Image
+-        if: needs.changes.outputs.src == 'true'
+-        uses: ./.github/actions/build-test-image
+-        with:
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ACCOUNT_NUMBER: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+-
+-  compare-tests:
+-    needs: [changes]
+-    runs-on: ubuntu-latest
+-    name: Compare/Build Automation Test List
+-    outputs:
+-      matrix: ${{ env.MATRIX_JSON }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Compare Test Lists
+-        run: |
+-          cd ./integration-tests
+-          ./scripts/compareTestList.sh ./smoke/automation_test.go
+-          ./scripts/compareTestList.sh ./smoke/keeper_test.go
+-      - name: Build Test Matrix Lists
+-        id: build-test-matrix-list
+-        run: |
+-          cd ./integration-tests
+-          MATRIX_JSON_AUTOMATION=$(./scripts/buildTestMatrixList.sh ./smoke/automation_test.go automation ubuntu20.04-8cores-32GB)
+-          MATRIX_JSON_KEEPER=$(./scripts/buildTestMatrixList.sh ./smoke/keeper_test.go keeper ubuntu20.04-8cores-32GB)
+-          COMBINED_ARRAY=$(jq -c -n "$MATRIX_JSON_AUTOMATION + $MATRIX_JSON_KEEPER")
+-          echo "MATRIX_JSON=${COMBINED_ARRAY}" >> $GITHUB_ENV
+-  eth-smoke-tests-matrix-automation:
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    needs: [build-chainlink, changes, compare-tests]
+-    env:
+-      SELECTED_NETWORKS: SIMULATED,SIMULATED_1,SIMULATED_2
+-      CHAINLINK_COMMIT_SHA: ${{ github.sha }}
+-      CHAINLINK_ENV_USER: ${{ github.actor }}
+-      TEST_LOG_LEVEL: debug
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        product: ${{fromJson(needs.compare-tests.outputs.matrix)}}
+-    runs-on: ${{ matrix.product.os }}
+-    name: ETH Smoke Tests ${{ matrix.product.name }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+-      - name: Build Go Test Command
+-        id: build-go-test-command
+-        run: |
+-          # if the matrix.product.run is set, use it for a different command
+-          if [ "${{ matrix.product.run }}" != "" ]; then
+-            echo "run_command=${{ matrix.product.run }} ./smoke/${{ matrix.product.file }}_test.go" >> "$GITHUB_OUTPUT"
+-          else
+-            echo "run_command=./smoke/${{ matrix.product.name }}_test.go" >> "$GITHUB_OUTPUT"
+-          fi
+-      ## Run this step when changes that require tests to be run are made
+-      - name: Run Tests
+-        if: needs.changes.outputs.src == 'true'
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        env:
+-          PYROSCOPE_SERVER: ${{ matrix.product.pyroscope_env == '' && '' || !startsWith(github.ref, 'refs/tags/') && '' || secrets.QA_PYROSCOPE_INSTANCE }} # Avoid sending blank envs https://github.com/orgs/community/discussions/25725
+-          PYROSCOPE_ENVIRONMENT: ${{ matrix.product.pyroscope_env }}
+-          PYROSCOPE_KEY: ${{ secrets.QA_PYROSCOPE_KEY }}
+-        with:
+-          test_command_to_run: make test_need_operator_assets && cd ./integration-tests && go test -timeout 30m -count=1 -json -test.parallel=${{ matrix.product.nodes }} ${{ steps.build-go-test-command.outputs.run_command }} 2>&1 | tee /tmp/gotest.log | gotestfmt
+-          test_download_vendor_packages_command: cd ./integration-tests && go mod download
+-          cl_repo: ${{ env.CHAINLINK_IMAGE }}
+-          cl_image_tag: ${{ github.sha }}
+-          aws_registries: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+-          artifacts_location: ./integration-tests/smoke/logs
+-          publish_check_name: ${{ matrix.product.name }}
+-          token: ${{ secrets.GITHUB_TOKEN }}
+-          go_mod_path: ./integration-tests/go.mod
+-          cache_key_id: core-e2e-${{ env.MOD_CACHE_VERSION }}
+-          cache_restore_only: 'true'
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: ETH Smoke Tests ${{ matrix.product.name }}
+-          test-results-file: '{"testType":"go","filePath":"/tmp/gotest.log"}'
+-        continue-on-error: true
+-  eth-smoke-tests-matrix:
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    needs: [build-chainlink, changes]
+-    env:
+-      SELECTED_NETWORKS: SIMULATED,SIMULATED_1,SIMULATED_2
+-      CHAINLINK_COMMIT_SHA: ${{ github.sha }}
+-      CHAINLINK_ENV_USER: ${{ github.actor }}
+-      TEST_LOG_LEVEL: debug
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        product:
+-          - name: cron
+-            nodes: 1
+-            os: ubuntu-latest
+-            pyroscope_env: ""
+-          - name: flux
+-            nodes: 1
+-            os: ubuntu-latest
+-            pyroscope_env: ""
+-          - name: ocr
+-            nodes: 1
+-            os: ubuntu20.04-8cores-32GB
+-            pyroscope_env: ci-smoke-ocr-evm-simulated
+-          - name: ocr2
+-            nodes: 1
+-            os: ubuntu20.04-8cores-32GB
+-            pyroscope_env: ci-smoke-ocr2-evm-simulated
+-          - name: runlog
+-            nodes: 1
+-            os: ubuntu-latest
+-            pyroscope_env: ""
+-          - name: vrf
+-            nodes: 1
+-            os: ubuntu20.04-8cores-32GB
+-            pyroscope_env: ci-smoke-vrf-evm-simulated
+-          - name: vrfv2
+-            nodes: 1
+-            os: ubuntu20.04-8cores-32GB
+-            pyroscope_env: ci-smoke-vrf2-evm-simulated
+-          - name: vrfv2plus
+-            nodes: 1
+-            os: ubuntu-latest
+-            pyroscope_env: ci-smoke-vrf2plus-evm-simulated
+-          - name: forwarder_ocr
+-            nodes: 1
+-            os: ubuntu20.04-8cores-32GB
+-            pyroscope_env: ci-smoke-forwarder-ocr-evm-simulated
+-          - name: forwarders_ocr2
+-            nodes: 1
+-            os: ubuntu20.04-8cores-32GB
+-            pyroscope_env: ci-smoke-forwarder-ocr-evm-simulated
+-    runs-on: ${{ matrix.product.os }}
+-    name: ETH Smoke Tests ${{ matrix.product.name }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+-      - name: Build Go Test Command
+-        id: build-go-test-command
+-        run: |
+-          # if the matrix.product.run is set, use it for a different command
+-          if [ "${{ matrix.product.run }}" != "" ]; then
+-            echo "run_command=${{ matrix.product.run }} ./smoke/${{ matrix.product.file }}_test.go" >> "$GITHUB_OUTPUT"
+-          else
+-            echo "run_command=./smoke/${{ matrix.product.name }}_test.go" >> "$GITHUB_OUTPUT"
+-          fi
+-      ## Run this step when changes that require tests to be run are made
+-      - name: Run Tests
+-        if: needs.changes.outputs.src == 'true'
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        env:
+-          PYROSCOPE_SERVER: ${{ matrix.product.pyroscope_env == '' && '' || !startsWith(github.ref, 'refs/tags/') && '' || secrets.QA_PYROSCOPE_INSTANCE }} # Avoid sending blank envs https://github.com/orgs/community/discussions/25725
+-          PYROSCOPE_ENVIRONMENT: ${{ matrix.product.pyroscope_env }}
+-          PYROSCOPE_KEY: ${{ secrets.QA_PYROSCOPE_KEY }}
+-        with:
+-          test_command_to_run: make test_need_operator_assets && cd ./integration-tests && go test -timeout 30m -count=1 -json -test.parallel=${{ matrix.product.nodes }} ${{ steps.build-go-test-command.outputs.run_command }} 2>&1 | tee /tmp/gotest.log | gotestfmt
+-          test_download_vendor_packages_command: cd ./integration-tests && go mod download
+-          cl_repo: ${{ env.CHAINLINK_IMAGE }}
+-          cl_image_tag: ${{ github.sha }}
+-          aws_registries: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+-          artifacts_location: ./integration-tests/smoke/logs
+-          publish_check_name: ${{ matrix.product.name }}
+-          token: ${{ secrets.GITHUB_TOKEN }}
+-          go_mod_path: ./integration-tests/go.mod
+-          cache_key_id: core-e2e-${{ env.MOD_CACHE_VERSION }}
+-          cache_restore_only: 'true'
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+-      ## Run this step when changes that do not need the test to run are made
+-      - name: Run Setup
+-        if: needs.changes.outputs.src == 'false'
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/setup-run-tests-environment@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          test_download_vendor_packages_command: cd ./integration-tests && go mod download
+-          go_mod_path: ./integration-tests/go.mod
+-          cache_key_id: core-e2e-${{ env.MOD_CACHE_VERSION }}
+-          cache_restore_only: 'true'
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+-
+-      - name: Upload test log
+-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
+-        if: failure()
+-        with:
+-          name: test-log-${{ matrix.product.name }}
+-          path: /tmp/gotest.log
+-          retention-days: 7
+-        continue-on-error: true
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: ETH Smoke Tests ${{ matrix.product.name }}
+-          test-results-file: '{"testType":"go","filePath":"/tmp/gotest.log"}'
+-        continue-on-error: true
+-
+-  ### Used to check the required checks box when the matrix completes
+-  eth-smoke-tests:
+-    if: always()
+-    runs-on: ubuntu-latest
+-    name: ETH Smoke Tests
+-    needs: [eth-smoke-tests-matrix, eth-smoke-tests-matrix-automation]
+-    steps:
+-      - name: Check smoke test matrix status
+-        if: needs.eth-smoke-tests-matrix.result != 'success' || needs.eth-smoke-tests-matrix-automation.result != 'success'
+-        run: exit 1
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: ETH Smoke Tests
+-        continue-on-error: true
+-
+-  # Run the setup if the matrix finishes but this time save the cache if we have a cache hit miss
+-  # this will also only run if both of the matrix jobs pass
+-  eth-smoke-go-mod-cache:
+-    environment: integration
+-    needs: [eth-smoke-tests]
+-    runs-on: ubuntu20.04-16cores-64GB
+-    name: ETH Smoke Tests Go Mod Cache
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+-      - name: Run Setup
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/setup-go@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          test_download_vendor_packages_command: |
+-            cd ./integration-tests
+-            go mod download
+-            # force download of test dependencies
+-            go test -run=NonExistentTest ./smoke/... || echo "ignore expected test failure"
+-          go_mod_path: ./integration-tests/go.mod
+-          cache_key_id: core-e2e-${{ env.MOD_CACHE_VERSION }}
+-          cache_restore_only: 'false'
+-
+-  ### Migration tests
+-  node-migration-tests:
+-    name: Version Migration Tests
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    runs-on: ubuntu-latest
+-    needs: [build-chainlink, changes, build-test-image]
+-    # Only run migration tests on new tags
+-    if: startsWith(github.ref, 'refs/tags/')
+-    env:
+-      SELECTED_NETWORKS: SIMULATED,SIMULATED_1,SIMULATED_2
+-      CHAINLINK_COMMIT_SHA: ${{ github.sha }}
+-      CHAINLINK_ENV_USER: ${{ github.actor }}
+-      CHAINLINK_IMAGE: public.ecr.aws/chainlink/chainlink
+-      TEST_UPGRADE_VERSION: ${{ github.sha }}
+-      TEST_UPGRADE_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink
+-      TEST_LOG_LEVEL: debug
+-      TEST_SUITE: migration
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+-      - name: Get Latest Version
+-        id: get_latest_version
+-        run: |
+-          untrimmed_ver=$(curl --header "Authorization: token ${{ secrets.GITHUB_TOKEN }}" --request GET https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .name)
+-          latest_version="${untrimmed_ver:1}"
+-          echo "latest_version=${latest_version} | tee -a $GITHUB_OUTPUT"
+-      - name: Name Versions
+-        run: |
+-          echo "Running migration tests from version '${{ steps.get_latest_version.outputs.latest_version }}' to: '${{ github.sha }}'"
+-      - name: Run Migration Tests
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          test_command_to_run: make test_need_operator_assets && cd ./integration-tests && go test -timeout 30m -count=1 -json ./migration 2>&1 | tee /tmp/gotest.log | gotestfmt
+-          test_download_vendor_packages_command: cd ./integration-tests && go mod download
+-          cl_repo: ${{ env.CHAINLINK_IMAGE }}
+-          cl_image_tag: ${{ steps.get_latest_version.outputs.latest_version }}
+-          artifacts_location: ./integration-tests/migration/logs
+-          publish_check_name: Node Migration Test Results
+-          token: ${{ secrets.GITHUB_TOKEN }}
+-          go_mod_path: ./integration-tests/go.mod
+-          cache_key_id: core-e2e-${{ env.MOD_CACHE_VERSION }}
+-          cache_restore_only: 'true'
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+-      - name: Upload test log
+-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
+-        if: failure()
+-        with:
+-          name: test-log-${{ matrix.product.name }}
+-          path: /tmp/gotest.log
+-          retention-days: 7
+-        continue-on-error: true
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Version Migration Tests
+-          test-results-file: '{"testType":"go","filePath":"/tmp/gotest.log"}'
+-        continue-on-error: true
+-
+-  ### Solana Section
+-  get_solana_sha:
+-    name: Get Solana Sha From Go Mod
+-    environment: Integration
+-    runs-on: ubuntu-latest
+-    outputs:
+-      sha: ${{ steps.getsha.outputs.sha }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+-      - name: Get the sha from go mod
+-        id: getshortsha
+-        run: |
+-          sol_ver=$(go list -m -json github.com/smartcontractkit/chainlink-solana  | jq -r .Version)
+-          short_sha="${sol_ver##*-}"
+-          echo "short sha is: ${short_sha}"
+-          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+-      - name: Checkout solana
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          repository: smartcontractkit/chainlink-solana
+-          ref: develop
+-          fetch-depth: 0
+-          path: solanapath
+-      - name: Get long sha
+-        id: getsha
+-        run: |
+-          cd solanapath
+-          full_sha=$(git rev-parse ${{steps.getshortsha.outputs.short_sha}})
+-          echo "sha is: ${full_sha}"
+-          echo "sha=${full_sha}" >> "$GITHUB_OUTPUT"
+-
+-  get_projectserum_version:
+-    name: Get ProjectSerum Version
+-    environment: integration
+-    runs-on: ubuntu-latest
+-    needs: [get_solana_sha]
+-    outputs:
+-      projectserum_version: ${{ steps.psversion.outputs.projectserum_version }}
+-    steps:
+-      - name: Checkout the solana repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          repository: smartcontractkit/chainlink-solana
+-          ref: ${{ needs.get_solana_sha.outputs.sha }}
+-      - name: Get ProjectSerum Version
+-        id: psversion
+-        uses: smartcontractkit/chainlink-solana/.github/actions/projectserum_version@4b971869e26b79c7ce3fb7c98005cc2e3f350915 # stable action on Oct 12 2022
+-
+-  solana-test-image-exists:
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    name: Check If Solana Test Image Exists
+-    runs-on: ubuntu-latest
+-    needs: [get_solana_sha]
+-    outputs:
+-      exists: ${{ steps.check-image.outputs.exists }}
+-    steps:
+-      - name: Check if image exists
+-        id: check-image
+-        uses: smartcontractkit/chainlink-github-actions/docker/image-exists@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          repository: chainlink-solana-tests
+-          tag: ${{ needs.get_solana_sha.outputs.sha }}
+-          AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-
+-  solana-build-contracts:
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    name: Solana Build Artifacts
+-    runs-on: ubuntu20.04-16cores-64GB
+-    needs:
+-      [
+-        changes,
+-        get_projectserum_version,
+-        solana-test-image-exists,
+-        get_solana_sha,
+-      ]
+-    container:
+-      image: projectserum/build:${{ needs.get_projectserum_version.outputs.projectserum_version }}
+-      env:
+-        RUSTUP_HOME: "/root/.rustup"
+-        FORCE_COLOR: 1
+-    steps:
+-      - name: Collect Metrics
+-        if: needs.changes.outputs.src == 'true'
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Solana Build Artifacts
+-        continue-on-error: true
+-      - name: Checkout the solana repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          repository: smartcontractkit/chainlink-solana
+-          ref: ${{ needs.get_solana_sha.outputs.sha }}
+-      - name: Build contracts
+-        if: needs.changes.outputs.src == 'true' && needs.solana-test-image-exists.outputs.exists == 'false'
+-        uses: smartcontractkit/chainlink-solana/.github/actions/build_contract_artifacts@23816fcf7d380a30c87b6d87e4fb0ca94419b259 # stable action on April 17 2023
+-        with:
+-          ref: ${{ needs.get_solana_sha.outputs.sha }}
+-
+-  solana-build-test-image:
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    name: Solana Build Test Image
+-    runs-on: ubuntu20.04-16cores-64GB
+-    needs:
+-      [
+-        solana-build-contracts,
+-        solana-test-image-exists,
+-        changes,
+-        get_solana_sha,
+-      ]
+-    env:
+-      CONTRACT_ARTIFACTS_PATH: contracts/target/deploy
+-    steps:
+-      - name: Collect Metrics
+-        if: needs.changes.outputs.src == 'true' && needs.solana-test-image-exists.outputs.exists == 'false'
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Solana Build Test Image
+-        continue-on-error: true
+-      - name: Checkout the repo
+-        if: needs.changes.outputs.src == 'true' && needs.solana-test-image-exists.outputs.exists == 'false'
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          repository: smartcontractkit/chainlink-solana
+-          ref: 23816fcf7d380a30c87b6d87e4fb0ca94419b259 # swtich back to this after the next solana release${{ needs.get_solana_sha.outputs.sha }}
+-      - name: Build Test Image
+-        if: needs.changes.outputs.src == 'true' && needs.solana-test-image-exists.outputs.exists == 'false'
+-        uses: ./.github/actions/build-test-image
+-        with:
+-          tag: ${{ needs.get_solana_sha.outputs.sha }}
+-          artifacts_path: ${{ env.CONTRACT_ARTIFACTS_PATH }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ACCOUNT_NUMBER: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+-      - run: echo "this exists so we don't have to run anything else if the build is skipped"
+-        if: needs.changes.outputs.src == 'false' || needs.solana-test-image-exists.outputs.exists == 'true'
+-
+-  solana-smoke-tests:
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    strategy:
+-      matrix:
+-        image:
+-          - name: ""
+-            tag-suffix: ""
+-          - name: (plugins)
+-            tag-suffix: -plugins
+-    name: Solana Smoke Tests ${{ matrix.image.name }}
+-    runs-on: ubuntu-latest
+-    needs:
+-      [
+-        build-chainlink,
+-        solana-build-contracts,
+-        solana-build-test-image,
+-        changes,
+-        get_solana_sha,
+-      ]
+-    env:
+-      CHAINLINK_COMMIT_SHA: ${{ github.sha }}
+-      CHAINLINK_ENV_USER: ${{ github.actor }}
+-      TEST_LOG_LEVEL: debug
+-      CONTRACT_ARTIFACTS_PATH: contracts/target/deploy
+-    steps:
+-      - name: Collect Metrics
+-        if: needs.changes.outputs.src == 'true'
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Solana Smoke Tests ${{ matrix.image.name }}
+-          test-results-file: '{"testType":"go","filePath":"/tmp/gotest.log"}'
+-        continue-on-error: true
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          repository: smartcontractkit/chainlink-solana
+-          ref: ${{ needs.get_solana_sha.outputs.sha }}
+-      - name: Run Tests
+-        if: needs.changes.outputs.src == 'true'
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          test_command_to_run: export ENV_JOB_IMAGE=${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink-solana-tests:${{ needs.get_solana_sha.outputs.sha }} && make test_smoke
+-          cl_repo: ${{ env.CHAINLINK_IMAGE }}
+-          cl_image_tag: ${{ github.sha }}${{ matrix.image.tag-suffix }}
+-          artifacts_location: /home/runner/work/chainlink-solana/chainlink-solana/integration-tests/logs
+-          publish_check_name: Solana Smoke Test Results
+-          go_mod_path: ./integration-tests/go.mod
+-          cache_key_id: core-solana-e2e-${{ env.MOD_CACHE_VERSION }}
+-          token: ${{ secrets.GITHUB_TOKEN }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+-      - name: Upload test log
+-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
+-        if: failure()
+-        with:
+-          name: test-log-solana
+-          path: /tmp/gotest.log
+-          retention-days: 7
+-        continue-on-error: true
+-  ### End Solana Section
+-
+-  ### Start Live Testnet Section
+-
+-  testnet-smoke-tests-matrix:
+-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) }} ## Only run live tests on new tags and nightly
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    needs: [build-chainlink]
+-    env:
+-      SELECTED_NETWORKS: ${{ matrix.testnet }}
+-      CHAINLINK_COMMIT_SHA: ${{ github.sha }}
+-      CHAINLINK_ENV_USER: ${{ github.actor }}
+-      TEST_LOG_LEVEL: debug
+-      EVM_KEYS: ${{ secrets.QA_EVM_KEYS }}
+-      TEST_EVM_KEYS: ${{ secrets.QA_EVM_KEYS }}
+-
+-      OPTIMISM_GOERLI_URLS: ${{ secrets.QA_OPTIMISM_GOERLI_URLS }}
+-      OPTIMISM_GOERLI_HTTP_URLS: ${{ secrets.QA_OPTIMISM_GOERLI_HTTP_URLS }}
+-
+-      ARBITRUM_GOERLI_URLS: ${{ secrets.QA_ARBITRUM_GOERLI_URLS }}
+-      ARBITRUM_GOERLI_HTTP_URLS: ${{ secrets.QA_ARBITRUM_GOERLI_HTTP_URLS }}
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        # NOTE: If changing this matrix, make sure to update the matrix in the testnet-smoke-tests-notify job to be the same
+-        # otherwise reporting will be broken. Getting a single matrix for multiple jobs is a pain
+-        # https://github.com/orgs/community/discussions/26284#discussioncomment-3251198
+-        testnet: [OPTIMISM_GOERLI, ARBITRUM_GOERLI]
+-    name: Live Testnet Smoke Tests ${{ matrix.testnet }}
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+-      ## Only run OCR smoke test for now
+-      - name: Run Tests
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        env:
+-          PYROSCOPE_SERVER: ${{ secrets.QA_PYROSCOPE_INSTANCE }}
+-          PYROSCOPE_ENVIRONMENT: ci-smoke-ocr-evm-${{ matrix.testnet }} # TODO: Only for OCR for now
+-          PYROSCOPE_KEY: ${{ secrets.QA_PYROSCOPE_KEY }}
+-        with:
+-          test_command_to_run: make test_need_operator_assets && cd ./integration-tests && go test -timeout 30m -count=1 -json -test.parallel=1 ./smoke/ocr_test.go 2>&1 | tee /tmp/gotest.log | gotestfmt
+-          test_download_vendor_packages_command: cd ./integration-tests && go mod download
+-          cl_repo: ${{ env.CHAINLINK_IMAGE }}
+-          cl_image_tag: ${{ github.sha }}
+-          aws_registries: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+-          artifacts_location: ./integration-tests/smoke/logs
+-          publish_check_name: ${{ matrix.testnet }} OCR Smoke Test Results
+-          token: ${{ secrets.GITHUB_TOKEN }}
+-          go_mod_path: ./integration-tests/go.mod
+-          cache_key_id: core-e2e-${{ env.MOD_CACHE_VERSION }}
+-          cache_restore_only: 'true'
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+-
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Live Testnet Smoke Tests ${{ matrix.testnet }}
+-          test-results-file: '{"testType":"go","filePath":"/tmp/gotest.log"}'
+-        continue-on-error: true
+-
+-  testnet-smoke-tests-notify:
+-    name: Live Testnet Start Slack Thread
+-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) }} ## Only run live tests on new tags and nightly
+-    environment: integration
+-    outputs:
+-      thread_ts: ${{ steps.slack.outputs.thread_ts }}
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    runs-on: ubuntu-latest
+-    needs: testnet-smoke-tests-matrix
+-    steps:
+-      - name: Debug Result
+-        run: echo ${{needs.testnet-smoke-tests-matrix.result}}
+-      - name: Main Slack Notification
+-        uses: slackapi/slack-github-action@e28cf165c92ffef168d23c5c9000cffc8a25e117 # v1.24.0
+-        id: slack
+-        with:
+-          channel-id: ${{ secrets.QA_SLACK_CHANNEL }}
+-          payload: |
+-            {
+-              "attachments": [
+-                {
+-                  "color": "${{ needs.testnet-smoke-tests-matrix.result == 'success' && '#2E7D32' || '#C62828' }}",
+-                  "blocks": [
+-                    {
+-                      "type": "header",
+-                      "text": {
+-                        "type": "plain_text",
+-                        "text": "Live Smoke Test Results ${{ needs.testnet-smoke-tests-matrix.result == 'success' && ':white_check_mark:' || ':x:'}}",
+-                        "emoji": true
+-                      }
+-                    },
+-                    {
+-                      "type": "divider"
+-                    },
+-                    {
+-                      "type": "section",
+-                      "text": {
+-                        "type": "mrkdwn",
+-                        "text": "<${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}|${{ github.ref_name }}> | <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}> | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Run>"
+-                      }
+-                    }
+-                  ]
+-                }
+-              ]
+-            }
+-        env:
+-          SLACK_BOT_TOKEN: ${{ secrets.QA_SLACK_API_KEY }}
+-
+-  testnet-smoke-tests-results:
+-    name: Post Live Testnet Smoke Test Results
+-    environment: integration
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    runs-on: ubuntu-latest
+-    needs: testnet-smoke-tests-notify
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        # NOTE: If changing this matrix, make sure to update the matrix in the testnet-smoke-tests-matrix job to be the same
+-        # otherwise reporting will be broken. Getting a single matrix for multiple jobs is a pain
+-        # https://github.com/orgs/community/discussions/26284#discussioncomment-3251198
+-        testnet: [OPTIMISM_GOERLI, ARBITRUM_GOERLI]
+-    steps:
+-      - name: Get Results
+-        id: test-results
+-        run: |
+-          echo "Querying test results"
+-
+-          echo "status=$(curl \
+-          -H "Authorization: Bearer ${{ github.token }}" \
+-          'https://api.github.com/repos/${{github.repository}}/actions/runs/${{ github.run_id }}/jobs' \
+-          | jq -r '.jobs[] | select(.name == "Live Testnet Smoke Tests ${{ matrix.testnet}}").steps[] | select(.name == "Run Tests").conclusion')" >> $GITHUB_OUTPUT
+-
+-          echo "status=$(curl \
+-          -H "Authorization: Bearer ${{ github.token }}" \
+-          'https://api.github.com/repos/${{github.repository}}/actions/runs/${{ github.run_id }}/jobs' \
+-          | jq -r '.jobs[] | select(.name == "Live Testnet Smoke Tests ${{ matrix.testnet}}").steps[] | select(.name == "Run Tests").conclusion')"
+-          echo "thread_ts=${{ needs.testnet-smoke-tests-notify.outputs.thread_ts }}"
+-
+-      - name: Test Details
+-        uses: slackapi/slack-github-action@e28cf165c92ffef168d23c5c9000cffc8a25e117 # v1.24.0
+-        with:
+-          channel-id: ${{ secrets.QA_SLACK_CHANNEL }}
+-          payload: |
+-            {
+-              "thread_ts": "${{ needs.testnet-smoke-tests-notify.outputs.thread_ts }}",
+-              "attachments": [
+-                {
+-                  "color": "${{ steps.test-results.outputs.status == 'success' && '#2E7D32' || '#C62828' }}",
+-                  "blocks": [
+-                    {
+-                      "type": "header",
+-                      "text": {
+-                        "type": "plain_text",
+-                        "text": "${{ matrix.testnet }} Smoke Test Results ${{ steps.test-results.outputs.status == 'success' && ':white_check_mark:' || ':x:'}}",
+-                        "emoji": true
+-                      }
+-                    },
+-                    {
+-                      "type": "divider"
+-                    },
+-                    {
+-                      "type": "section",
+-                      "text": {
+-                        "type": "mrkdwn",
+-                        "text": "OCR ${{ steps.test-results.outputs.status == 'success' && ':white_check_mark:' || ':x:'}}"
+-                      }
+-                    }
+-                  ]
+-                }
+-              ]
+-            }
+-        env:
+-          SLACK_BOT_TOKEN: ${{ secrets.QA_SLACK_API_KEY }}
+-
+-  ### End Live Testnet Section
+\ No newline at end of file
+diff --git a/.github/workflows/lint-gh-workflows.yml b/.github/workflows/lint-gh-workflows.yml
+deleted file mode 100644
+index ebe09e67d88..00000000000
+--- a/.github/workflows/lint-gh-workflows.yml
++++ /dev/null
+@@ -1,21 +0,0 @@
+-name: Lint GH Workflows
+-on:
+-  push:
+-jobs:
+-  lint_workflows:
+-    name: Validate Github Action Workflows
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Check out Code
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Run actionlint
+-        uses: reviewdog/action-actionlint@7485c2136bd093d2317a854c72910eebaee35238 # v1.37.1
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Validate Github Action Workflows
+-        continue-on-error: true
+diff --git a/.github/workflows/on-demand-ocr-soak-test.yml b/.github/workflows/on-demand-ocr-soak-test.yml
+deleted file mode 100644
+index 8e154aa3b3f..00000000000
+--- a/.github/workflows/on-demand-ocr-soak-test.yml
++++ /dev/null
+@@ -1,143 +0,0 @@
+-name: On Demand OCR Soak Test
+-on:
+-  workflow_dispatch:
+-    inputs:
+-      network:
+-        description: Network to run tests on
+-        type: choice
+-        options:
+-          - "SIMULATED"
+-          - "GOERLI"
+-          - "OPTIMISM_GOERLI"
+-          - "ARBITRUM_GOERLI"
+-          - "CELO_ALFAJORES"
+-          - "CELO_MAINNET"
+-          - "BASE_GOERLI"
+-          - "BASE_MAINNET"
+-          - "BSC_MAINNET"
+-          - "BSC_TESTNET"
+-          - "SCROLL_SEPOLIA"
+-          - "SCROLL_MAINNET"   
+-      fundingPrivateKey:
+-        description: Private funding key (Skip for Simulated)
+-        required: false
+-        type: string
+-      wsURL:
+-        description: WS URL for the network (Skip for Simulated)
+-        required: false
+-        type: string
+-      httpURL:
+-        description: HTTP URL for the network (Skip for Simulated)
+-        required: false
+-        type: string
+-      slackMemberID:
+-        description: Slack Member ID (Not your @)
+-        required: true
+-        default: U01A2B2C3D4
+-        type: string
+-      chainlinkImage:
+-        description: Container image location for the Chainlink nodes
+-        required: true
+-        default: public.ecr.aws/chainlink/chainlink
+-      chainlinkVersion:
+-        description: Container image version for the Chainlink nodes
+-        required: true
+-        default: "1.11.0"
+-      testDuration:
+-        description: Duration of the test (time string)
+-        required: false
+-        default: 15m
+-      chainlinkNodeFunding:
+-        description: How much to fund each Chainlink node (in ETH)
+-        required: false
+-        default: ".001"
+-      timeBetweenRounds:
+-        description: How long to wait before starting a new round
+-        required: false
+-        default: 1m
+-
+-jobs:
+-  ocr_soak_test:
+-    name: ${{ inputs.network }} OCR Soak Test
+-    environment: integration
+-    runs-on: ubuntu-latest
+-    permissions:
+-      checks: write
+-      pull-requests: write
+-      id-token: write
+-      contents: read
+-    env:
+-      CHAINLINK_COMMIT_SHA: ${{ inputs.chainlinkVersion }}
+-      CHAINLINK_ENV_USER: ${{ github.actor }}
+-      SELECTED_NETWORKS: ${{ inputs.network }}
+-      SLACK_API_KEY: ${{ secrets.QA_SLACK_API_KEY }}
+-      SLACK_CHANNEL: ${{ secrets.QA_SLACK_CHANNEL }}
+-      OCR_TEST_DURATION: ${{ inputs.testDuration }}
+-      OCR_CHAINLINK_NODE_FUNDING: ${{ inputs.chainlinkNodeFunding }}
+-      OCR_TIME_BETWEEN_ROUNDS: ${{ inputs.timeBetweenRounds }}
+-      TEST_LOG_LEVEL: debug
+-      REF_NAME: ${{ github.head_ref || github.ref_name }}
+-      ENV_JOB_IMAGE_BASE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink-tests
+-    steps:
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: ${{ inputs.network }} OCR Soak Test
+-        continue-on-error: true
+-      - name: Get Inputs
+-        run: |
+-          EVM_URLS=$(jq -r '.inputs.wsURL' $GITHUB_EVENT_PATH)
+-          EVM_HTTP_URLS=$(jq -r '.inputs.httpURL' $GITHUB_EVENT_PATH)
+-          EVM_KEYS=$(jq -r '.inputs.fundingPrivateKey' $GITHUB_EVENT_PATH)
+-          SLACK_USER=$(jq -r '.inputs.slackMemberID' $GITHUB_EVENT_PATH)
+-
+-          echo ::add-mask::$EVM_URLS
+-          echo ::add-mask::$EVM_HTTP_URLS
+-          echo ::add-mask::$EVM_KEYS
+-          echo ::add-mask::$SLACK_USER
+-
+-          echo EVM_URLS=$EVM_URLS >> $GITHUB_ENV
+-          echo EVM_HTTP_URLS=$EVM_HTTP_URLS >> $GITHUB_ENV
+-          echo EVM_KEYS=$EVM_KEYS >> $GITHUB_ENV
+-          echo SLACK_USER=$SLACK_USER >> $GITHUB_ENV
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: ${{ env.REF_NAME }}
+-      - name: Setup Push Tag
+-        shell: bash
+-        run: |
+-          echo "### chainlink image used for this test run :link:" >>$GITHUB_STEP_SUMMARY
+-          echo "\`${{ inputs.chainlinkVersion }}\`" >>$GITHUB_STEP_SUMMARY
+-          echo "### chainlink-tests image tag for this test run :ship:" >>$GITHUB_STEP_SUMMARY
+-          echo "\`${GITHUB_SHA}\`" >>$GITHUB_STEP_SUMMARY
+-      - name: Build Image
+-        uses: ./.github/actions/build-test-image
+-        with:
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ACCOUNT_NUMBER: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}
+-      - name: Run Tests
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        env:
+-          DETACH_RUNNER: true
+-          TEST_SUITE: soak
+-          TEST_ARGS: -test.timeout 900h -test.memprofile memprofile.out -test.cpuprofile profile.out
+-          ENV_JOB_IMAGE: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink-tests:${{ github.sha }}
+-          # We can comment these out when we have a stable soak test and aren't worried about resource consumption
+-          TEST_UPLOAD_CPU_PROFILE: true
+-          TEST_UPLOAD_MEM_PROFILE: true
+-        with:
+-          test_command_to_run: cd ./integration-tests && go test -v -count=1 -run ^TestOCRSoak$ ./soak
+-          test_download_vendor_packages_command: make gomod
+-          cl_repo: ${{ inputs.chainlinkImage }}
+-          cl_image_tag: ${{ inputs.chainlinkVersion }}
+-          token: ${{ secrets.GITHUB_TOKEN }}
+-          should_cleanup: false
+-          go_mod_path: ./integration-tests/go.mod
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+diff --git a/.github/workflows/operator-ui-cd.yml b/.github/workflows/operator-ui-cd.yml
+deleted file mode 100644
+index 488e93778e6..00000000000
+--- a/.github/workflows/operator-ui-cd.yml
++++ /dev/null
+@@ -1,58 +0,0 @@
+-name: Operator UI CD
+-
+-on:
+-  push:
+-    branches:
+-      - develop
+-  workflow_dispatch:
+-  schedule:
+-    - cron: "0 */1 * * *" # Run every hour
+-
+-jobs:
+-  update-version:
+-    permissions:
+-      id-token: write
+-    name: Update Version
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-
+-      - name: Update version
+-        id: update
+-        env:
+-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+-        run: ./operator_ui/check.sh
+-
+-      - name: Assume role capable of dispatching action
+-        uses: aws-actions/configure-aws-credentials@5fd3084fc36e372ff1fff382a39b10d03659f355 # v2.2.0
+-        with:
+-          role-to-assume: ${{ secrets.AWS_OIDC_CHAINLINK_CI_AUTO_PR_TOKEN_ISSUER_ROLE_ARN }}
+-          role-duration-seconds: ${{ secrets.aws-role-duration-seconds }}
+-          role-session-name: operator-ui-cd.update-version
+-          aws-region: ${{ secrets.AWS_REGION }}
+-
+-      - name: Get Github Token
+-        id: get-gh-token
+-        uses: smartcontractkit/chainlink-github-actions/github-app-token-issuer@chore/update-github-app-token-issuer
+-        with:
+-          url: ${{ secrets.AWS_INFRA_RELENG_TOKEN_ISSUER_LAMBDA_URL }}
+-
+-      - name: Open PR
+-        uses: peter-evans/create-pull-request@38e0b6e68b4c852a5500a94740f0e535e0d7ba54 # v4.2.4
+-        with:
+-          title: Update Operator UI from ${{ steps.update.outputs.current_tag }} to ${{ steps.update.outputs.latest_tag }}
+-          token: ${{ steps.get-gh-token.outputs.access-token }}
+-          branch: chore/update-operator-ui
+-          commit-message: Update Operator UI from ${{ steps.update.outputs.current_tag }} to ${{ steps.update.outputs.latest_tag }}
+-          body: ${{ steps.update.outputs.body }}
+-
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Update Version
+-        continue-on-error: true
+diff --git a/.github/workflows/operator-ui-ci.yml b/.github/workflows/operator-ui-ci.yml
+deleted file mode 100644
+index b73106177c5..00000000000
+--- a/.github/workflows/operator-ui-ci.yml
++++ /dev/null
+@@ -1,46 +0,0 @@
+-name: Operator UI CI
+-on:
+-  pull_request:
+-
+-jobs:
+-  check-gql:
+-    permissions:
+-      id-token: write
+-      contents: read
+-      # To allow writing comments to the current PR
+-      pull-requests: write
+-
+-    name: Breaking Changes GQL Check
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@v1
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Breaking Changes GQL Check
+-        continue-on-error: true
+-
+-      - name: Assume role capable of dispatching action
+-        uses: aws-actions/configure-aws-credentials@5fd3084fc36e372ff1fff382a39b10d03659f355 # v2.2.0
+-        with:
+-          role-to-assume: ${{ secrets.AWS_OIDC_CHAINLINK_CI_OPERATOR_UI_ACCESS_TOKEN_ISSUER_ROLE_ARN }}
+-          role-duration-seconds: 3600
+-          role-session-name: operator-ui-ci.check-gql
+-          aws-region: ${{ secrets.AWS_REGION }}
+-
+-      - name: Get Github Token
+-        id: get-gh-token
+-        uses: smartcontractkit/chainlink-github-actions/github-app-token-issuer@main
+-        with:
+-          url: ${{ secrets.AWS_INFRA_RELENG_TOKEN_ISSUER_LAMBDA_URL }}
+-
+-      - uses: convictional/trigger-workflow-and-wait@f69fa9eedd3c62a599220f4d5745230e237904be #v1.6.5
+-        with:
+-          owner: smartcontractkit
+-          repo: operator-ui
+-          comment_downstream_url: ${{ github.event.pull_request.comments_url }}
+-          github_token: ${{ steps.get-gh-token.outputs.access-token }}
+-          workflow_file_name: chainlink-ci.yml
+-          client_payload: '{"ref": "${{ github.event.pull_request.head.sha }}"}'
+diff --git a/.github/workflows/performance-tests.yml b/.github/workflows/performance-tests.yml
+deleted file mode 100644
+index e96903e396e..00000000000
+--- a/.github/workflows/performance-tests.yml
++++ /dev/null
+@@ -1,87 +0,0 @@
+-name: Performance Tests
+-on:
+-  workflow_dispatch:
+-    inputs:
+-      focus:
+-        description: cron|directrequest|flux|keeper|ocr|vrf|suite
+-        required: true
+-        default: suite
+-        type: string
+-
+-jobs:
+-  build-chainlink:
+-    environment: integration
+-    permissions:
+-      id-token: write
+-      contents: read
+-    name: Build Chainlink Image
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Configure AWS Credentials
+-        uses: aws-actions/configure-aws-credentials@5fd3084fc36e372ff1fff382a39b10d03659f355 # v2.2.0
+-        with:
+-          aws-region: ${{ secrets.QA_AWS_REGION }}
+-          role-to-assume: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          role-duration-seconds: 3600
+-      - name: Login to Amazon ECR
+-        id: login-ecr
+-        uses: aws-actions/amazon-ecr-login@v1
+-      - name: Set up Docker Buildx
+-        uses: docker/setup-buildx-action@ecf95283f03858871ff00b787d79c419715afc34 # v2.7.0
+-      - name: Build and Push
+-        uses: docker/build-push-action@c56af957549030174b10d6867f20e78cfd7debc5 # v3.2.0
+-        with:
+-          context: .
+-          file: core/chainlink.Dockerfile
+-          # comma separated like: KEY1=VAL1,KEY2=VAL2,...
+-          build-args: COMMIT_SHA=${{ github.sha }}
+-          tags: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink:latest.${{ github.sha }}
+-          push: true
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Build Chainlink Image
+-        continue-on-error: true
+-  run_tests:
+-    environment: integration
+-    name: run core evm ${{ github.event.inputs.focus }} performance tests
+-    runs-on: ubuntu-latest
+-    needs: build-chainlink
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Run Tests
+-        uses: smartcontractkit/chainlink-github-actions/chainlink-testing-framework/run-tests@00c6214deb10a3f374c6d3430c32c5202015d463 # v2.2.12
+-        with:
+-          test_command_to_run: cd integration-tests && go test -timeout 1h -count=1 -json -test.parallel 10 ./performance 2>&1 | tee /tmp/gotest.log | gotestfmt
+-          test_download_vendor_packages_command: make gomod
+-          cl_repo: ${{ secrets.QA_AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ secrets.QA_AWS_REGION }}.amazonaws.com/chainlink
+-          cl_image_tag: latest.${{ github.sha }}
+-          artifacts_location: ./integration-tests/performance/logs
+-          publish_report_paths: ./tests-perf-report.xml
+-          publish_check_name: Core Performance Test Results
+-          go_mod_path: ./integration-tests/go.mod
+-          QA_AWS_REGION: ${{ secrets.QA_AWS_REGION }}
+-          QA_AWS_ROLE_TO_ASSUME: ${{ secrets.QA_AWS_ROLE_TO_ASSUME }}
+-          QA_KUBECONFIG: ${{ secrets.QA_KUBECONFIG }}
+-      - name: Publish pprof artifacts
+-        if: ${{ success() }}
+-        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # v3.1.0
+-        with:
+-          name: pprof_results
+-          path: ./integration-tests/performance/logs
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: run core evm ${{ github.event.inputs.focus }} performance tests
+-        continue-on-error: true
+diff --git a/.github/workflows/readme.yml b/.github/workflows/readme.yml
+deleted file mode 100644
+index d3788674d6d..00000000000
+--- a/.github/workflows/readme.yml
++++ /dev/null
+@@ -1,39 +0,0 @@
+-#
+-# This action checks PRs to see if any README* files were updated.
+-# If none were, it will add a message to the PR asking if it would make sense to do so.
+-#
+-name: Readme
+-
+-on: pull_request
+-
+-jobs:
+-  readme:
+-    # For security reasons, GITHUB_TOKEN is read-only on forks, so we cannot leave comments on PRs.
+-    # This check skips the job if it is detected we are running on a fork.
+-    if: ${{ github.event.pull_request.head.repo.full_name == 'smartcontractkit/chainlink' }}
+-    name: Readme checker
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Check for changed files
+-        id: changedfiles
+-        uses: umani/changed-files@0239328a3a6268aad16af7c3e4efc78e32d6c0f0 # Version 4.0.1
+-        with:
+-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+-          pattern: '^(?!.*node_modules).*README\.md$'
+-      - name: Make a comment
+-        uses: unsplash/comment-on-pr@ffe8f97ccc63ce12c3c23c6885b169db67958d3b # Version 1.3.0
+-        env:
+-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+-        if: contains(steps.changedfiles.outputs.files_updated, 'README') != true && contains(steps.changedfiles.outputs.files_created, 'README') != true
+-        with:
+-          msg: "I see that you haven't updated any README files. Would it make sense to do so?"
+-          check_for_duplicate_msg: true
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Readme checker
+-        continue-on-error: true
+\ No newline at end of file
+diff --git a/.github/workflows/sigscanner.yml b/.github/workflows/sigscanner.yml
+deleted file mode 100644
+index 390af228f06..00000000000
+--- a/.github/workflows/sigscanner.yml
++++ /dev/null
+@@ -1,34 +0,0 @@
+-name: 'SigScanner Check'
+-
+-on:
+-  merge_group:
+-  push:
+-
+-jobs:
+-  sigscanner-check:
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: "SigScanner checking ${{ github.sha }} by ${{ github.actor }}"
+-        env:
+-          API_TOKEN: ${{ secrets.SIGSCANNER_API_TOKEN }}
+-          API_URL: ${{ secrets.SIGSCANNER_API_URL }}
+-        run: |
+-          echo "🔎 Checking commit ${{ github.sha }} by ${{ github.actor }} in ${{ github.repository }} - ${{ github.event_name }}"
+-          CODE=`curl --write-out '%{http_code}' -X POST -H "Content-Type: application/json" -H "Authorization: $API_TOKEN" --silent --output /dev/null --url "$API_URL" --data '{"commit":"${{ github.sha }}","repository":"${{ github.repository }}","author":"${{ github.actor }}"}'`
+-          echo "Received $CODE"
+-          if [[ "$CODE" == "200" ]]; then
+-            echo "✅ Commit is verified"
+-            exit 0
+-          else
+-            echo "❌ Commit is NOT verified"
+-            exit 1
+-          fi
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: sigscanner-check
+-        continue-on-error: true
+diff --git a/.github/workflows/solidity-foundry.yml b/.github/workflows/solidity-foundry.yml
+deleted file mode 100644
+index 5044b668c2c..00000000000
+--- a/.github/workflows/solidity-foundry.yml
++++ /dev/null
+@@ -1,91 +0,0 @@
+-name: Solidity Foundry
+-on: [pull_request]
+-
+-env:
+-  FOUNDRY_PROFILE: ci
+-
+-jobs:
+-  changes:
+-    name: Detect changes
+-    runs-on: ubuntu-latest
+-    outputs:
+-      changes: ${{ steps.changes.outputs.src }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50 # v2.11.1
+-        id: changes
+-        with:
+-          # Foundry is only used for Solidity v0.8 contracts, therefore we can ignore
+-          # changes to older contracts.
+-          filters: |
+-            src:
+-              - 'contracts/src/v0.8/**/*'
+-              - '.github/workflows/solidity-foundry.yml'
+-              - 'contracts/foundry.toml'
+-              - 'contracts/gas-snapshots/*.gas-snapshot'
+-              - '.gitmodules'
+-              - 'contracts/foundry-lib'
+-
+-  tests:
+-    strategy:
+-      matrix:
+-        product: [ vrf, automation, llo-feeds, functions, automation-dev, shared ]
+-    needs: [changes]
+-    if: needs.changes.outputs.changes == 'true'
+-    name: Tests
+-    # See https://github.com/foundry-rs/foundry/issues/3827
+-    runs-on: ubuntu-22.04
+-
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          submodules: recursive
+-
+-      # Only needed because we use the NPM versions of packages
+-      # and not native Foundry. This is to make sure the dependencies
+-      # stay in sync.
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-
+-      - name: Install Foundry
+-        uses: foundry-rs/foundry-toolchain@v1
+-        with:
+-          version: nightly
+-
+-      - name: Run Forge build
+-        run: |
+-          forge --version
+-          forge build
+-        id: build
+-        working-directory: contracts
+-        env:
+-          FOUNDRY_PROFILE: ${{ matrix.product }}
+-
+-      - name: Run Forge tests
+-        run: |
+-          forge test -vvv
+-        id: test
+-        working-directory: contracts
+-        env:
+-          FOUNDRY_PROFILE: ${{ matrix.product }}
+-
+-      - name: Run Forge snapshot
+-        if: ${{ !contains(fromJson('["vrf"]'), matrix.product) }}
+-        run: |
+-          forge snapshot --check gas-snapshots/${{ matrix.product }}.gas-snapshot
+-        id: snapshot
+-        working-directory: contracts
+-        env:
+-          FOUNDRY_PROFILE: ${{ matrix.product }}
+-
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Foundry Tests ${{ matrix.product }}
+-        continue-on-error: true
+diff --git a/.github/workflows/solidity-hardhat.yml b/.github/workflows/solidity-hardhat.yml
+deleted file mode 100644
+index ac8240aa4e2..00000000000
+--- a/.github/workflows/solidity-hardhat.yml
++++ /dev/null
+@@ -1,177 +0,0 @@
+-name: Solidity-Hardhat
+-
+-on:
+-  merge_group:
+-  push:
+-
+-env:
+-  NODE_OPTIONS: --max_old_space_size=8192
+-
+-defaults:
+-  run:
+-    shell: bash
+-
+-jobs:
+-  changes:
+-    name: Detect changes
+-    runs-on: ubuntu-latest
+-    outputs:
+-      changes: ${{ steps.changes.outputs.src }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50 # v2.11.1
+-        id: changes
+-        with:
+-          filters: |
+-            src:
+-              - 'contracts/src/!(v0.8/(llo-feeds|ccip)/**)/**/*'
+-              - 'contracts/test/**/*'
+-              - 'contracts/package.json'
+-              - 'contracts/hardhat.config.ts'
+-              - 'contracts/ci.json'
+-              - '.github/workflows/solidity-hardhat.yml'
+-
+-  split-tests:
+-    name: Split Solidity Tests
+-    runs-on: ubuntu-latest
+-    outputs:
+-      splits: ${{ steps.split.outputs.splits }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Generate splits
+-        id: split
+-        uses: ./.github/actions/split-tests
+-        with:
+-          config: ./contracts/ci.json
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Split Solidity Tests
+-        continue-on-error: true
+-
+-  solidity-coverage-splits:
+-    needs: [changes, split-tests]
+-    if: needs.changes.outputs.changes == 'true'
+-    name: Solidity Coverage ${{ matrix.split.id }} ${{ fromJSON('["(skipped)", ""]')[needs.changes.outputs.changes == 'true'] }}
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        split: ${{ fromJson(needs.split-tests.outputs.splits) }}
+-    runs-on: ubuntu20.04-4cores-16GB
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-      - name: Setup Hardhat
+-        uses: ./.github/actions/setup-hardhat
+-        with:
+-          namespace: coverage
+-      - name: Run coverage
+-        env:
+-          SPLIT: ${{ matrix.split.coverageTests }}
+-        shell: bash
+-        run: pnpm coverage --testfiles "$SPLIT"
+-        working-directory: contracts
+-      - name: Push coverage
+-        run: ./tools/bin/codecov -f ./contracts/coverage.json
+-      - name: Rename coverage
+-        run: mv ./contracts/coverage.json ./contracts/coverage-${{ matrix.split.idx }}.json
+-      - name: Upload coverage
+-        uses: actions/upload-artifact@v3
+-        with:
+-          name: solidity-coverage-${{ matrix.split.idx }}
+-          path: ./contracts/coverage-${{ matrix.split.idx }}.json
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Solidity Coverage ${{ matrix.split.id }}
+-        continue-on-error: true
+-
+-  solidity-coverage:
+-    needs: [changes, solidity-coverage-splits]
+-    if: needs.changes.outputs.changes == 'true'
+-    name: Solidity Coverage ${{ fromJSON('["(skipped)", ""]')[needs.changes.outputs.changes == 'true'] }}
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-      - name: Make coverage directory
+-        run: mkdir ./contracts/coverage-reports
+-      - name: Download coverage
+-        uses: actions/download-artifact@v3
+-        with:
+-          path: ./contracts/coverage-reports
+-      - name: Display structure of downloaded files
+-        run: ls -R coverage-reports
+-        working-directory: contracts
+-      - name: Generate merged report
+-        run: pnpm istanbul report text text-summary
+-        working-directory: contracts
+-
+-  solidity-splits:
+-    needs: [changes, split-tests]
+-    if: needs.changes.outputs.changes == 'true'
+-    name: Solidity ${{ matrix.split.id }} ${{ fromJSON('["(skipped)", ""]')[needs.changes.outputs.changes == 'true'] }}
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        split: ${{ fromJson(needs.split-tests.outputs.splits) }}
+-    runs-on: ubuntu20.04-4cores-16GB
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-      - name: Setup Hardhat
+-        uses: ./.github/actions/setup-hardhat
+-        with:
+-          namespace: coverage
+-      - name: Run tests
+-        env:
+-          SPLIT: ${{ matrix.split.tests }}
+-        working-directory: contracts
+-        run: pnpm test -- $SPLIT
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Solidity ${{ matrix.split.id }}
+-        continue-on-error: true
+-
+-  solidity:
+-    needs: [changes, solidity-splits]
+-    name: Solidity
+-    runs-on: ubuntu-latest
+-    if: always()
+-    steps:
+-      - run: echo 'Solidity tests finished!'
+-      - name: Check test results
+-        run: |
+-          if [[ "${{ needs.changes.result }}" = "failure" || "${{ needs.solidity-splits.result }}" = "failure" ]]; then
+-            echo "One or more changes / solidity-splits jobs failed"
+-            exit 1
+-          else
+-            echo "All test jobs passed successfully"
+-          fi
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Solidity
+-        continue-on-error: true
+\ No newline at end of file
+diff --git a/.github/workflows/solidity.yml b/.github/workflows/solidity.yml
+deleted file mode 100644
+index 9b17b75df3e..00000000000
+--- a/.github/workflows/solidity.yml
++++ /dev/null
+@@ -1,140 +0,0 @@
+-name: Solidity
+-
+-on:
+-  merge_group:
+-  push:
+-
+-defaults:
+-  run:
+-    shell: bash
+-
+-jobs:
+-  changes:
+-    name: Detect changes
+-    runs-on: ubuntu-latest
+-    outputs:
+-      changes: ${{ steps.changes.outputs.src }}
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50 # v2.11.1
+-        id: changes
+-        with:
+-          filters: |
+-            src:
+-              - 'contracts/**/*'
+-              - '.github/workflows/solidity.yml'
+-
+-  prepublish-test:
+-    needs: [changes]
+-    if: needs.changes.outputs.changes == 'true'
+-    name: Prepublish Test ${{ fromJSON('["(skipped)", ""]')[needs.changes.outputs.changes == 'true'] }}
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-      - name: Run Prepublish test
+-        working-directory: contracts
+-        run: pnpm prepublishOnly
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Prepublish Test
+-        continue-on-error: true
+-
+-  native-compile:
+-    needs: [changes]
+-    if: needs.changes.outputs.changes == 'true'
+-    name: Native Compilation ${{ fromJSON('["(skipped)", ""]')[needs.changes.outputs.changes == 'true'] }}
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Checkout diff-so-fancy
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          repository: so-fancy/diff-so-fancy
+-          ref: a673cb4d2707f64d92b86498a2f5f71c8e2643d5 # v1.4.3
+-          path: diff-so-fancy
+-      - name: Install diff-so-fancy
+-        run: echo "$GITHUB_WORKSPACE/diff-so-fancy" >> $GITHUB_PATH
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-        with:
+-          prod: "true"
+-      - name: Setup Go
+-        uses: ./.github/actions/setup-go
+-      - name: Run native compile and generate wrappers
+-        run: make wrappers-all
+-        working-directory: ./contracts
+-      - name: Verify local solc binaries
+-        run: ./tools/ci/check_solc_hashes
+-      - name: Check if Go solidity wrappers are updated
+-        if: ${{ needs.changes.outputs.changes == 'true' }}
+-        run: git diff --minimal --color --exit-code | diff-so-fancy
+-      - name: Comment on fix instructions
+-        env:
+-          GITHUB_TOKEN: ${{ github.token }}
+-        if: ${{ failure() }}
+-        run: gh pr comment -b 'Go solidity wrappers are out-of-date, regenerate them via the `make wrappers-all` command'
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Native Compilation
+-        continue-on-error: true
+-
+-  lint:
+-    defaults:
+-      run:
+-        working-directory: contracts
+-    needs: [changes]
+-    if: needs.changes.outputs.changes == 'true'
+-    name: Lint ${{ fromJSON('["(skipped)", ""]')[needs.changes.outputs.changes == 'true'] }}
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-      - name: Run pnpm lint
+-        run: pnpm lint
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Lint
+-        continue-on-error: true
+-
+-  prettier:
+-    defaults:
+-      run:
+-        working-directory: contracts
+-    needs: [changes]
+-    if: needs.changes.outputs.changes == 'true'
+-    name: Prettier Formatting
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout the repo
+-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-      - name: Setup NodeJS
+-        uses: ./.github/actions/setup-nodejs
+-      - name: Run prettier check
+-        run: pnpm prettier:check
+-      - name: Collect Metrics
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Prettier Formatting
+-        continue-on-error: true
+diff --git a/.github/workflows/stale.yml b/.github/workflows/stale.yml
+deleted file mode 100644
+index 6c5207e0f05..00000000000
+--- a/.github/workflows/stale.yml
++++ /dev/null
+@@ -1,26 +0,0 @@
+-# Workflow is triggered daily midnight UTC
+-# A PR with more than 60 days of inactivity will be marked as stale
+-# A PR that's stale for more than 7 days will be automatically closed
+-# Issues are exempt from auto marking as stale but issues with manually added 'stale' label are eligible for auto closure after 7 days.
+-# PRs with assignees are exempt from auto stale marking, it's the responsibility of the assignee to get the PR progressed either with review/merge or closure.
+-name: Manage stale Issues and PRs
+-
+-on:
+-  schedule:
+-    - cron: "0 0 * * *" # Will be triggered every day at midnight UTC
+-
+-jobs:
+-  stale:
+-
+-    runs-on: ubuntu-latest
+-    permissions:
+-      issues: write
+-      pull-requests: write
+-
+-    steps:
+-    - uses: actions/stale@1160a2240286f5da8ec72b1c0816ce2481aabf84 # v8.0.0
+-      with:
+-        repo-token: ${{ secrets.GITHUB_TOKEN }}
+-        exempt-all-pr-assignees: true
+-        stale-pr-message: 'This PR is stale because it has been open 60 days with no activity. Remove stale label or comment or this will be closed in 7 days.'
+-        days-before-issue-stale: -1 # disables marking issues as stale automatically. Issues can still be marked as stale manually, in which the closure policy applies.
+diff --git a/.github/workflows/sync-develop-from-smartcontractkit-chainlink.yml b/.github/workflows/sync-develop-from-smartcontractkit-chainlink.yml
+deleted file mode 100644
+index 49864f1cebe..00000000000
+--- a/.github/workflows/sync-develop-from-smartcontractkit-chainlink.yml
++++ /dev/null
+@@ -1,38 +0,0 @@
+-name: Sync develop from smartcontractkit/chainlink
+-
+-on:
+-  schedule:
+-    # * is a special character in YAML so you have to quote this string
+-    - cron: '*/30 * * * *'
+-
+-jobs:
+-  sync:
+-    name: Sync
+-    runs-on: ubuntu-latest
+-    steps:
+-      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+-        with:
+-          ref: develop
+-        if: env.GITHUB_REPOSITORY != 'smartcontractkit/chainlink'
+-      - name: Sync
+-        run: |
+-          git remote add upstream "https://github.com/smartcontractkit/chainlink.git"
+-          COMMIT_HASH_UPSTREAM=$(git ls-remote upstream develop | grep -P '^[0-9a-f]{40}\trefs/heads/develop$' | cut -f 1)
+-          COMMIT_HASH_ORIGIN=$(git ls-remote origin develop | grep -P '^[0-9a-f]{40}\trefs/heads/develop$' | cut -f 1)
+-          if [ "$COMMIT_HASH_UPSTREAM" = "$COMMIT_HASH_ORIGIN" ]; then
+-            echo "Both remotes have develop at $COMMIT_HASH_UPSTREAM. No need to sync."
+-          else
+-            echo "upstream has develop at $COMMIT_HASH_UPSTREAM. origin has develop at $COMMIT_HASH_ORIGIN. Syncing..."
+-            git fetch upstream
+-            git push origin upstream/develop:develop
+-          fi
+-        if: env.GITHUB_REPOSITORY != 'smartcontractkit/chainlink'
+-      - name: Collect Metrics
+-        if: always()
+-        id: collect-gha-metrics
+-        uses: smartcontractkit/push-gha-metrics-action@d2c2b7bdc9012651230b2608a1bcb0c48538b6ec
+-        with:
+-          basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+-          hostname: ${{ secrets.GRAFANA_CLOUD_HOST }}
+-          this-job-name: Sync
+-        continue-on-error: true
+diff --git a/GNUmakefile b/GNUmakefile
+index 8698d845f3d..9667fa71296 100644
+--- a/GNUmakefile
++++ b/GNUmakefile
+@@ -146,7 +146,7 @@ config-docs: ## Generate core node configuration documentation
+ .PHONY: golangci-lint
+ golangci-lint: ## Run golangci-lint for all issues.
+ 	[ -d "./golangci-lint" ] || mkdir ./golangci-lint && \
+-	docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:v1.53.2 golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 > ./golangci-lint/$(shell date +%Y-%m-%d_%H:%M:%S).txt
++	docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:v1.53.3 golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 > ./golangci-lint/$(shell date +%Y-%m-%d_%H:%M:%S).txt
+ 
+ 
+ GORELEASER_CONFIG ?= .goreleaser.yaml
+diff --git a/core/services/chainlink/application.go b/core/services/chainlink/application.go
+index b2e8719e607..e0295e284a0 100644
+--- a/core/services/chainlink/application.go
++++ b/core/services/chainlink/application.go
+@@ -56,6 +56,9 @@ import (
+ 	"github.com/smartcontractkit/chainlink/v2/plugins"
+ )
+ 
++// mispeled coment
++var unused = "unused"
++
+ // Application implements the common functions used in the core node.
+ //
+ //go:generate mockery --quiet --name Application --output ../../internal/mocks/ --case=underscore
+diff --git a/core/web/cors_test.go b/core/web/cors_test.go
+index 760b9066902..243e55e0b9f 100644
+--- a/core/web/cors_test.go
++++ b/core/web/cors_test.go
+@@ -9,6 +9,8 @@ import (
+ 	"github.com/smartcontractkit/chainlink/v2/core/services/chainlink"
+ )
+ 
++var unusedTestVar = "foo"
++
+ func TestCors_DefaultOrigins(t *testing.T) {
+ 	t.Parallel()
+ 
