@@ -20,7 +20,7 @@ jobs:
     name: lint
     runs-on: ubuntu20.04-16cores-64GB
     steps:
-      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v4
