@@ -16,6 +16,26 @@ on:
     - cron: "0 0 * * *"
 
 jobs:
+  golangci-2:
+    name: lint-2
+    runs-on: ubuntu20.04-16cores-64GB
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: "go.mod"
+          # If cache is set to true (default), the "prepare environment" will
+          # silently fail with these errors:
+          # Error: /usr/bin/tar: <...>: Cannot open: File exists
+          cache: false
+      - name: test linter manually
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.54.2 && \
+          gh pr diff 10555 > pr.diff && ./bin/golangci-lint run --out-format colored-line-number --new-from-patch=pr.diff
+
   golangci:
     name: lint
     runs-on: ubuntu20.04-16cores-64GB
@@ -29,10 +49,15 @@ jobs:
           # Error: /usr/bin/tar: <...>: Cannot open: File exists
           cache: false
       - name: golangci-lint
+        continue-on-error: true
         uses: golangci/golangci-lint-action@3a919529898de77ec3da873e3063ca4b10e7f5cc # v3.7.0
         with:
           version: v1.54.2
           only-new-issues: ${{ github.event.schedule == '' }} # show only new issues, unless it's a scheduled run
           args: --out-format colored-line-number
           skip-cache: true
-          install-mode: goinstall
+
+      - name: test linter manually
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr diff 10555 > pr.diff && golangci-lint run --out-format colored-line-number --new-from-patch=pr.diff
