@@ -21,8 +21,6 @@ jobs:
     runs-on: ubuntu20.04-16cores-64GB
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-go@v4
         with:
           go-version-file: "go.mod"
