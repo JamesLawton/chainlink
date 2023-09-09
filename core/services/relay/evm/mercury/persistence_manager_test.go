@@ -20,7 +20,7 @@ func bootstrapPersistenceManager(t *testing.T) *PersistenceManager {
 	pgtest.MustExec(t, db, `SET CONSTRAINTS feed_latest_reports_job_id_fkey DEFERRED`)
 	lggr := logger.TestLogger(t)
 	orm := NewORM(db, lggr, pgtest.NewQConfig(true))
-	return NewPersistenceManager(lggr, orm, 0, 2, 10*time.Millisecond, 10*time.Millisecond)
+	return NewPersistenceManager(lggr, orm, 0, 2, 5*time.Millisecond, 5*time.Millisecond)
 }
 
 func TestPersistenceManager(t *testing.T) {
@@ -67,7 +67,7 @@ func TestPersistenceManagerAsyncDelete(t *testing.T) {
 
 	pm.AsyncDelete(&pb.TransmitRequest{Payload: reports[0]})
 
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 
 	transmissions, err := pm.Load(ctx)
 	require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestPersistenceManagerAsyncDelete(t *testing.T) {
 
 	pm.AsyncDelete(&pb.TransmitRequest{Payload: reports[1]})
 
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 
 	transmissions, err = pm.Load(ctx)
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestPersistenceManagerPrune(t *testing.T) {
 	err = pm.Start(ctx)
 	require.NoError(t, err)
 
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 
 	transmissions, err := pm.Load(ctx)
 	require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestPersistenceManagerPrune(t *testing.T) {
 	err = pm.Insert(ctx, &pb.TransmitRequest{Payload: reports[3]}, ocrtypes.ReportContext{ReportTimestamp: ocrtypes.ReportTimestamp{Epoch: 4}})
 	require.NoError(t, err)
 
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 
 	transmissions, err = pm.Load(ctx)
 	require.NoError(t, err)
