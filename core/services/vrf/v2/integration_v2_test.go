@@ -802,7 +802,7 @@ func mineBatch(t *testing.T, requestIDs []*big.Int, subID *big.Int, backend *bac
 		require.NoError(t, err)
 		for _, tx := range txs {
 			var evmTx txmgr.Tx
-			txmgr.DbEthTxToEthTx(tx, &evmTx)
+			tx.ToTx(&evmTx)
 			meta, err := evmTx.GetMeta()
 			require.NoError(t, err)
 			for _, requestID := range meta.RequestIDs {
@@ -2102,7 +2102,8 @@ func TestStartingCountsV1(t *testing.T) {
 	sql := `INSERT INTO eth_txes (nonce, from_address, to_address, encoded_payload, value, gas_limit, state, created_at, broadcast_at, initial_broadcast_at, meta, subject, evm_chain_id, min_confirmations, pipeline_task_run_id)
 VALUES (:nonce, :from_address, :to_address, :encoded_payload, :value, :gas_limit, :state, :created_at, :broadcast_at, :initial_broadcast_at, :meta, :subject, :evm_chain_id, :min_confirmations, :pipeline_task_run_id);`
 	for _, tx := range append(confirmedTxes, unconfirmedTxes...) {
-		dbEtx := txmgr.DbEthTxFromEthTx(&tx)
+		var dbEtx txmgr.DbEthTx
+		dbEtx.FromTx(&tx) //nolint:gosec // just copying fields
 		_, err = db.NamedExec(sql, &dbEtx)
 		require.NoError(t, err)
 	}
@@ -2140,10 +2141,10 @@ VALUES (:nonce, :from_address, :to_address, :encoded_payload, :value, :gas_limit
 	sql = `INSERT INTO eth_tx_attempts (eth_tx_id, gas_price, signed_raw_tx, hash, state, created_at, chain_specific_gas_limit)
 		VALUES (:eth_tx_id, :gas_price, :signed_raw_tx, :hash, :state, :created_at, :chain_specific_gas_limit)`
 	for _, attempt := range txAttempts {
-		dbAttempt := txmgr.DbEthTxAttemptFromEthTxAttempt(&attempt) //nolint:gosec // just copying fields
+		var dbAttempt txmgr.DbEthTxAttempt
+		dbAttempt.FromTxAttempt(&attempt) //nolint:gosec // just copying fields
 		_, err = db.NamedExec(sql, &dbAttempt)
 		require.NoError(t, err)
-		txmgr.DbEthTxAttemptToEthTxAttempt(dbAttempt, &attempt) //nolint:gosec // just copying fields
 	}
 
 	// add eth_receipts
