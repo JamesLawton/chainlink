@@ -3,7 +3,7 @@
 pragma solidity 0.8.6;
 
 import "../shared/access/ConfirmedOwner.sol";
-import "../automation/interfaces/KeeperCompatibleInterface.sol";
+import "../automation/interfaces/AutomationCompatibleInterface.sol";
 import "../interfaces/VRFCoordinatorV2Interface.sol";
 import "../shared/interfaces/LinkTokenInterface.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -12,7 +12,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * @title The VRFSubscriptionBalanceMonitor contract.
  * @notice A keeper-compatible contract that monitors and funds VRF subscriptions.
  */
-contract VRFSubscriptionBalanceMonitor is ConfirmedOwner, Pausable, KeeperCompatibleInterface {
+contract VRFSubscriptionBalanceMonitor is ConfirmedOwner, Pausable, AutomationCompatibleInterface {
   VRFCoordinatorV2Interface public COORDINATOR;
   LinkTokenInterface public LINKTOKEN;
 
